@@ -54,10 +54,10 @@ LL.catLabel = id => (LL.cat.find(c=>c.id===id)||{label:'Other'}).label;
 /* ---------- store ---------- */
 const KEY = 'll_proto_v2';
 const defaults = () => ({v:2,theme:'auto',mode:null,
-  profile:{business:'',contact:'',email:'',phone:'',locations:[''],closing:'',done:false},
-  items:[],submitted:null,watch:[],lotAlerts:[],searches:[],notify:false,
+  profile:{business:'',contact:'',email:'',phone:'',locations:[''],closing:'',consignorId:'',done:false},
+  items:[],submitted:null,lots:{start:1001,end:0,next:1001},stickerOrders:[],watch:[],lotAlerts:[],searches:[],notify:false,
   ui:{q:'',cat:'all',coachSeen:false,zoomHint:false}});
-function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY)); if(s && s.v===2) return Object.assign(defaults(), s, {profile:Object.assign(defaults().profile,s.profile), ui:Object.assign(defaults().ui,s.ui)}); }catch(e){} return defaults(); }
+function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY)); if(s && s.v===2) return Object.assign(defaults(), s, {profile:Object.assign(defaults().profile,s.profile), ui:Object.assign(defaults().ui,s.ui), lots:Object.assign(defaults().lots,s.lots)}); }catch(e){} return defaults(); }
 LL.state = load();
 LL.save = () => { try{ localStorage.setItem(KEY, JSON.stringify(LL.state)); }catch(e){ console.warn('save failed',e); } };
 LL.reset = async () => { localStorage.removeItem(KEY); await LL.photos.clear(); LL.state = defaults(); };

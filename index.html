@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Just Ask Miggy · Local Liquidators prototype</title>
+<title>Speedy List AI · Local Liquidators prototype</title>
 <meta name="description" content="PROTOTYPE concept for Local Liquidators: seller photo inventory with AI Describe, and a swipeable buyer experience. Not an official app.">
 <meta name="theme-color" content="#ffffff">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="assets/brand/roadrunner-favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/brand/roadrunner-icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/brand/roadrunner-apple-touch-180.png" sizes="180x180">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Ask Miggy">
+<meta name="apple-mobile-web-app-title" content="Speedy List">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="preload" href="fonts/Barlow-ExtraBold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/OpenSans-var.woff2" as="font" type="font/woff2" crossorigin>
@@ -20,9 +21,10 @@
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb347"/><stop offset=".55" stop-color="#ff6a2b"/><stop offset="1" stop-color="#4aa3df"/></linearGradient></defs></svg>
 <div id="app">
   <header class="topbar">
-    <a class="brand" href="#/" aria-label="Just Ask Miggy — Your Go-To Guy">
+    <a class="brand" href="#/" aria-label="Speedy List AI — List it fast. Sell it faster.">
       <span class="lg"><span><img src="assets/logo-icon.png" alt="Local Liquidators"></span></span>
-      <span><h1>Just Ask <b>Miggy</b></h1><small>Your Go-To Guy · for Local Liquidators</small></span>
+      <img class="rr" src="assets/brand/roadrunner-tile-64.png" alt="" width="30" height="30">
+      <span><h1 class="wordmark style-a"><span class="sp-speedy">Speedy</span> <span class="sp-list">List</span> <span class="sp-ai">AI</span></h1><small>List it fast. Sell it faster.</small></span>
     </a>
     <button class="iconbtn" id="themebtn" data-act="theme" aria-label="Toggle dark mode"></button>
   </header>
@@ -38,6 +40,6 @@
   <div id="toast" role="status" aria-live="polite"></div>
 </div>
 <noscript><p style="padding:24px">This prototype needs JavaScript.</p></noscript>
-<script src="config.js"></script><script src="js/core.js"></script><script src="js/vision.js"></script><script src="js/ai.js"></script><script src="js/data.js"></script><script src="js/sell.js"></script><script src="js/buy.js"></script><script src="js/app.js"></script>
+<script src="config.js"></script><script src="js/core.js"></script><script src="js/vision.js"></script><script src="js/ai.js"></script><script src="js/data.js"></script><script src="js/protocol.js"></script><script src="js/sell.js"></script><script src="js/export.js"></script><script src="js/buy.js"></script><script src="js/bulk.js"></script><script src="js/app.js"></script>
 </body>
 </html>

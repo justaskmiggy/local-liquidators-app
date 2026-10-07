@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Just Ask Miggy × Local Liquidators (Prototype)",
-  "short_name": "Ask Miggy",
+  "name": "Speedy List AI × Local Liquidators (Prototype)",
+  "short_name": "Speedy List",
   "description": "PROTOTYPE concept for Local Liquidators: photo inventory with AI Describe for sellers, swipeable lots and alerts for buyers. Not an official app.",
   "start_url": "./index.html",
   "scope": "./",
@@ -11,12 +11,12 @@
   "theme_color": "#00456e",
   "categories": ["business", "shopping"],
   "icons": [
-    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+    {"src": "assets/brand/roadrunner-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "assets/brand/roadrunner-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "assets/brand/roadrunner-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
   ],
   "shortcuts": [
-    {"name": "Sell — add an item", "url": "./index.html#/sell/item/new/photos", "icons": [{"src": "icons/icon-192.png", "sizes": "192x192"}]},
-    {"name": "Buy — swipe lots", "url": "./index.html#/buy/reels/all", "icons": [{"src": "icons/icon-192.png", "sizes": "192x192"}]}
+    {"name": "Speedy List AI — add an item", "short_name": "Speedy List", "url": "./index.html#/sell/item/new/photos", "icons": [{"src": "assets/brand/roadrunner-icon-192.png", "sizes": "192x192"}]},
+    {"name": "Speedy Buy AI — swipe lots", "short_name": "Speedy Buy", "url": "./index.html#/buy/reels/all", "icons": [{"src": "assets/brand/roadrunner-buy-tile-192.png", "sizes": "192x192", "type": "image/png"}]}
   ]
 }

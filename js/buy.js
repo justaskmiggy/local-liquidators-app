@@ -140,7 +140,7 @@ LL.acts.notif = async b => {
   const ns=notifState();
   if(ns==='unsupported'){ b.checked=false; LL.toast('Notifications aren’t available in this browser'); return; }
   let p = ns; if(p==='default') p = await Notification.requestPermission();
-  if(p==='granted'){ S().notify=true; LL.save(); LL.render(true); await showNote('Alerts are on','This is a prototype test notification from Just Ask Miggy.'); }
+  if(p==='granted'){ S().notify=true; LL.save(); LL.render(true); await showNote('Alerts are on','This is a prototype test notification from Speedy List AI.'); }
   else { b.checked=false; S().notify=false; LL.save(); LL.render(true); LL.toast('Notifications are blocked — enable them in browser settings'); }
 };
 LL.acts.testalert = async b => { const s=S().searches.find(x=>x.id===b.dataset.id); const n=LL.matchSearch(s).length; const t=s.name||'Saved search'; if(S().notify && notifState()==='granted'){ const ok=await showNote('New match: '+t, n+' sample lot'+(n===1?'':'s')+' match your alert (test).'); LL.toast(ok?'Test notification sent':'Could not show notification'); } else LL.toast('Turn on notifications first'); };
