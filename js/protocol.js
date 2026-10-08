@@ -184,7 +184,7 @@ LL.views.protocol = () => { const C=LL.CONTACT;
    <div class="card pad contactcard"><div class="lbl">Expert support</div><b style="font-family:var(--head);font-size:21px">${esc(C.name)}</b><span class="small muted" style="display:block;margin-bottom:6px">Primary contact · cataloging help</span>
     <a class="listrow" href="mailto:${C.email}" style="text-decoration:none;color:inherit">${I.mail.replace('<svg','<svg width="22" height="22"')}<div><b>Email</b><span class="small muted">${C.email}</span></div></a>
     <a class="listrow" href="tel:${C.tel}" style="text-decoration:none;color:inherit">${I.phone.replace('<svg','<svg width="22" height="22"')}<div><b>Call</b><span class="small muted">${C.phone}</span></div></a></div>
-   <p class="small muted center" style="margin:14px 0 4px">Summary of Local Liquidators’ Consignor Guide inside a <b>prototype</b> app — not an official Local Liquidators tool.</p></div>`}; };
+   <p class="small muted center" style="margin:14px 0 4px">Summary of Local Liquidators’ Consignor Guide.</p></div>`}; };
 
 /* ---------- Lot stickers: reserve a block → print or ship ---------- */
 const OSTAT = ['Ordered','Printing','Shipped','Delivered'];
@@ -192,7 +192,7 @@ LL.STICKER_STATUS = OSTAT;
 const latestOrder = () => (S().stickerOrders||[]).slice(-1)[0] || null;
 LL.proto.latestOrder = latestOrder;
 LL.proto.stickerStatusHTML = (compact) => { const o=latestOrder(), L=S().lots;
-  if(o) return `<a class="stkstat" href="#/sell/stickers/order/${o.id}">${ico.truck}<div><b>Lot stickers · ${OSTAT[o.status]}</b><span>${o.from}–${o.to} · ${o.count} stickers · sample status</span></div>${I.chev}</a>`;
+  if(o) return `<a class="stkstat" href="#/sell/stickers/order/${o.id}">${ico.truck}<div><b>Lot stickers · ${OSTAT[o.status]}</b><span>${o.from}–${o.to} · ${o.count} stickers · status on this phone</span></div>${I.chev}</a>`;
   if(L.end) return `<a class="stkstat" href="#/sell/stickers">${ico.tag}<div><b>Lots ${fmtRange(L)} reserved</b><span>Next lot #${Math.max(L.next,L.start)} · get paper stickers</span></div>${I.chev}</a>`;
   return `<a class="stkstat" href="#/sell/stickers">${ico.tag}<div><b>Get your lot stickers</b><span>Reserve lot numbers · print or ship</span></div>${I.chev}</a>`; };
 LL.views.stickers = ({sub,arg}) => {
@@ -209,7 +209,7 @@ LL.views.stickers = ({sub,arg}) => {
    <div class="lbl" style="margin:18px 0 8px">2 · How do you want your stickers?</div>
    <div class="optcards">
     <a class="optcard" href="#/sell/stickers/print"><span class="oi">${ico.print}</span><b>Print them now</b><span>Print a sticker sheet at home or the office, cut and stick one on each item.</span><em>Fastest</em></a>
-    <a class="optcard" href="#/sell/stickers/ship"><span class="oi">${ico.truck}</span><b>Ship them to me</b><span>Bright pre-printed stickers mailed to you. Track the order here.</span><em>Prototype · no real shipping</em></a></div>
+    <a class="optcard" href="#/sell/stickers/ship"><span class="oi">${ico.truck}</span><b>Ship them to me</b><span>Bright pre-printed stickers mailed to you. Track the order here.</span><em>Requested by email</em></a></div>
    <p class="small muted center" style="margin:12px 4px 0">No stickers yet? You can still start — the app adds a <b>digital lot sticker</b> as photo #1 of every lot.</p>
    ${orders.length?`<div class="lbl" style="margin:18px 0 8px">Your sticker orders</div>${orders.slice().reverse().map(o=>`<a class="stkstat" href="#/sell/stickers/order/${o.id}">${ico.truck}<div><b>${o.from}–${o.to} · ${OSTAT[o.status]}</b><span>Ordered ${fmtDate(o.at)} · ${o.count} stickers</span></div>${I.chev}</a>`).join('')}`:''}
    <div style="height:12px"></div></div>`,
@@ -221,11 +221,11 @@ function printView(){ const [a,b]=rangeOf(), n=Math.min(b-a+1,120), cid=S().prof
    <p class="small muted">${n} stickers · lots ${a}–${a+n-1}${cid?' · Consignor '+esc(cid):''}. Print on plain paper or full-sheet label paper, cut out, and stick one on each item before you photograph it.</p>
    <button class="btn accent block" style="margin:12px 0" data-act="printstk">${ico.print} Print sticker sheet</button></div>
    <div class="stksheet" aria-label="Sticker sheet preview">${Array.from({length:n},(_,i)=>`<div class="pstk"><small>LOT</small><b>${a+i}</b><span>${cid?'Consignor '+esc(cid):'Local Liquidators'}</span></div>`).join('')}</div>
-   <p class="small muted center noprint" style="padding:10px 16px 20px">Prototype · sheet is generated on this phone.</p>`}; }
+   <p class="small muted center noprint" style="padding:10px 16px 20px">Sheet is generated on this phone.</p>`}; }
 LL.acts.printstk = () => window.print();
 function shipView(){ const p=S().profile, [a,b]=rangeOf();
   return {html:`<div class="pad"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">${back('#/sell/stickers')}<h2 style="font-size:26px;font-weight:800">Ship stickers to me</h2></div>
-   <div class="ai-banner" role="note" style="margin-bottom:14px">${I.info.replace('<svg','<svg width="22" height="22" style="flex:none"')}<div><b>Prototype</b> — nothing is shipped. Placing the order saves it on this phone and opens an email draft to Local Liquidators with the details.</div></div>
+   <div class="ai-banner" role="note" style="margin-bottom:14px">${I.info.replace('<svg','<svg width="22" height="22" style="flex:none"')}<div><b>How ordering works:</b> placing the order saves it on this phone and opens an email to Local Liquidators with the details. Your rep confirms and ships.</div></div>
    <form id="shipf" novalidate>
     <label class="field"><span>Name <i>*</i></span><input type="text" name="name" required value="${esc(p.contact)}" autocomplete="name"></label>
     <label class="field"><span>Business</span><input type="text" name="business" value="${esc(p.business)}" autocomplete="organization"></label>
@@ -241,13 +241,13 @@ function shipView(){ const p=S().profile, [a,b]=rangeOf();
        const from=+v('from'), to=+v('to'); if(!(to>=from)){ LL.toast('Check the lot number range'); return; }
        const o={id:LL.uid(),at:Date.now(),name:v('name'),business:v('business'),street:v('street'),city:v('city'),st:v('st').toUpperCase(),zip:v('zip'),from,to,count:to-from+1,notes:v('notes'),consignorId:S().profile.consignorId||'',status:0,hist:[Date.now()]};
        S().stickerOrders=(S().stickerOrders||[]).concat(o); LL.save(); LL.go('#/sell/stickers/order/'+o.id); LL.toast('Sticker order saved — email it to Local Liquidators'); }); } }; }
-function mailOrder(o){ const body=`LOT STICKER ORDER (prototype app)\nOrder #: ${o.id.toUpperCase()}\nPlaced: ${new Date(o.at).toLocaleString()}\n\nName: ${o.name}\nBusiness: ${o.business||'-'}\nConsignor ID: ${o.consignorId||'not set'}\nShip to: ${o.street}, ${o.city}${o.st?', '+o.st:''} ${o.zip}\n\nLot numbers: ${o.from}-${o.to} (${o.count} stickers)\nNotes: ${o.notes||'-'}\n\nSent from the Speedy List AI prototype (not an official Local Liquidators app).`;
+function mailOrder(o){ const body=`LOT STICKER ORDER\nOrder #: ${o.id.toUpperCase()}\nPlaced: ${new Date(o.at).toLocaleString()}\n\nName: ${o.name}\nBusiness: ${o.business||'-'}\nConsignor ID: ${o.consignorId||'not set'}\nShip to: ${o.street}, ${o.city}${o.st?', '+o.st:''} ${o.zip}\n\nLot numbers: ${o.from}-${o.to} (${o.count} stickers)\nNotes: ${o.notes||'-'}\n\nSent from Speedy List AI.`;
   return `mailto:${LL.EMAIL}?subject=${encodeURIComponent(`Lot sticker order - ${o.business||o.name} - lots ${o.from}-${o.to}`)}&body=${encodeURIComponent(body)}`; }
 function orderView(id){ const o=(S().stickerOrders||[]).find(x=>x.id===id); if(!o){ LL.go('#/sell/stickers',true); return {html:''}; }
   return {html:`<div class="pad"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">${back('#/sell/stickers')}<div><h2 style="font-size:26px;font-weight:800">Sticker order</h2><p class="small muted">#${o.id.toUpperCase()} · lots ${o.from}–${o.to} · ${o.count} stickers</p></div></div>
    <div class="card pad"><ol class="tracker" aria-label="Order status">${OSTAT.map((s,i)=>`<li class="${i<o.status?'done':i===o.status?'cur':''}"><i>${i<=o.status?I.check:''}</i><div><b>${s}</b><span class="small muted">${o.hist[i]?new Date(o.hist[i]).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):['','We print your stickers','On the way to you','Stick one on each item'][i]}</span></div></li>`).join('')}</ol>
-    <p class="small muted" style="margin-top:6px"><span class="badge demo">Sample status</span> Prototype — there’s no backend, so nothing ships and statuses don’t update on their own.</p>
-    <button class="btn ghost sm block" style="margin-top:10px" data-act="stkadv" data-id="${o.id}" ${o.status>=3?'disabled':''}>Demo: advance status</button></div>
+    <p class="small muted" style="margin-top:6px"><span class="badge demo">Status on this phone</span> Statuses don’t update on their own; update them when your rep confirms.</p>
+    <button class="btn ghost sm block" style="margin-top:10px" data-act="stkadv" data-id="${o.id}" ${o.status>=3?'disabled':''}>Mark next status</button></div>
    <div class="card pad"><dl class="kv"><dt>Name</dt><dd>${esc(o.name)}</dd>${o.business?`<dt>Business</dt><dd>${esc(o.business)}</dd>`:''}<dt>Ship to</dt><dd>${esc(o.street)}<br>${esc(o.city)}${o.st?', '+esc(o.st):''} ${esc(o.zip)}</dd><dt>Lot numbers</dt><dd>${o.from}–${o.to}</dd><dt>Stickers</dt><dd>${o.count}</dd><dt>Consignor ID</dt><dd>${esc(o.consignorId||'—')}</dd>${o.notes?`<dt>Notes</dt><dd>${esc(o.notes)}</dd>`:''}</dl></div>
    <a class="btn block" style="margin-top:14px" href="${mailOrder(o)}">${I.mail} Email order to Local Liquidators</a>
    <p class="small muted" style="margin-top:8px">Opens your mail app with the order filled in, addressed to ${LL.EMAIL}. Nothing is sent until you tap Send.</p>

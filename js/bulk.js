@@ -236,11 +236,11 @@ function itemCard(it, rep){ const tag = it.qty>1 ? `<span class="bk-q">×${it.qt
    ${it.flags.length?`<ul class="bk-flags">${it.flags.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}</div>`; }
 LL.views.bulkreport = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#/sell/bulk', true); return {html:''}; }
   const t = totals(rep.items), demo = rep.source==='demo', d = new Date(rep.at);
-  const banner = demo ? `<div class="bk-demo" role="note"><b>Demo estimate</b> ${rep.why==='offline'?'You were offline, so this is a sample bakery example, not read from your photos. Re-run Analyze with signal.':'Real AI isn’t connected in this prototype yet, so this is a sample bakery example, not read from your photos.'} For real numbers, tap <b>Send to my assistant</b>.</div>`
+  const banner = demo ? `<div class="bk-demo" role="note"><b>Example only</b> ${rep.why==='offline'?'You were offline, so this is an example bakery report, not read from your photos. Re-run Analyze with signal.':'Speedy AI couldn’t be reached, so this is an example bakery report, not read from your photos. Tap Analyze again.'} Or tap <b>Send to my assistant</b>.</div>`
     : `<div class="bk-ai" role="note"><b>AI estimate</b> from your ${rep.photos} photos. Photo-based, not an appraisal. Check the flagged items on site.</div>`;
   const comm = b.showComm ? `<div class="card pad bk-comm"><div class="lbl">LL commission on auction total</div>${RATES.map(r=>`<div class="bk-trow"><span>${r}%</span><b>${rng(t.auc[0]*r/100, t.auc[1]*r/100)}</b></div>`).join('')}</div>` : '';
   return {html:`<div class="bk-rep">
-  <div class="bk-rephead"><img class="bk-plogo" src="assets/logo.jpg" alt="Local Liquidators" width="170" height="40"><div><span class="badge ${demo?'demo':'ok'}">${demo?'Demo estimate':'AI estimate'}</span></div>
+  <div class="bk-rephead"><img class="bk-plogo" src="assets/logo.jpg" alt="Local Liquidators" width="170" height="40"><div><span class="badge ${demo?'demo':'ok'}">${demo?'Example only':'AI estimate'}</span></div>
    <h2>${esc(rep.job || b.job || 'Walkthrough')}</h2><p>${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} · ${rep.photos} photos · ${t.n} lines · ${t.units} units</p>
    <div class="bk-sum"><div><small>FB Marketplace</small><b>${rng(t.fb[0],t.fb[1])}</b></div><div><small>Auction</small><b>${rng(t.auc[0],t.auc[1])}</b></div></div></div>
   ${banner}
@@ -253,7 +253,7 @@ LL.views.bulkreport = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#/
    ${comm}
    <label class="bk-switch noprint"><span>Show commission (rep only)</span><span class="switch"><input type="checkbox" data-act="bkcomm" ${b.showComm?'checked':''}><i></i></span></label>
    ${rep.notes?`<p class="small muted" style="margin-top:10px">AI note: ${esc(rep.notes)}</p>`:''}
-   <p class="small muted bk-disc">${demo?'DEMO ESTIMATE: sample numbers for showing the flow. ':''}Estimates from photos only, not an appraisal. Confirm models, counts, condition and ownership (leases/liens) on site.</p></div>
+   <p class="small muted bk-disc">${demo?'EXAMPLE ONLY: not read from your photos. ':''}Estimates from photos only, not an appraisal. Confirm models, counts, condition and ownership (leases/liens) on site.</p></div>
   <div class="pad noprint"><div class="lbl">Export</div><div class="bk-exp">
     <button class="btn ghost sm" data-act="bkcopy">${I.check} Copy as text</button><button class="btn ghost sm" data-act="bkcsv">${I.download} Download CSV</button>
     <button class="btn ghost sm" data-act="bkpdf">${I.download} Print / PDF</button><a class="btn ghost sm" href="#/sell/bulk">${I.camera} Back to photos</a></div></div>
@@ -270,7 +270,7 @@ LL.acts.bkcomm = c => { B().showComm = c.checked; LL.save(); LL.render(true); };
 
 /* exports */
 function asText(withPhotosNote){ const b = B(), rep = b.report; const t = rep ? totals(rep.items) : null; const L = [];
-  L.push(`${rep&&rep.job || b.job || 'Walkthrough'}: walkthrough ${rep ? (rep.source==='demo'?'(DEMO ESTIMATE, sample numbers)':'(AI estimate)') : ''}`.trim());
+  L.push(`${rep&&rep.job || b.job || 'Walkthrough'}: walkthrough ${rep ? (rep.source==='demo'?'(EXAMPLE ONLY, not from photos)':'(AI estimate)') : ''}`.trim());
   L.push(`${b.photos.length} photos: ` + areasOf(b.photos).map(a => `${a} ${b.photos.filter(p=>p.area===a).map(label).join(' ')}`).join(' | '));
   if(rep){ areasOf(rep.items).forEach(a => { L.push('', a.toUpperCase());
       rep.items.filter(i => i.area===a).forEach(i => L.push(`- ${i.qty>1?i.qty+'x ':''}${i.name}${(i.brand||i.model)?' ('+[i.brand,i.model].filter(Boolean).join(' ')+')':''} | ${i.condition} | FB ${rng(i.fb[0]*i.qty,i.fb[1]*i.qty)} | Auction ${rng(i.auc[0]*i.qty,i.auc[1]*i.qty)}${i.photos.length?' | '+i.photos.join(','):''}${i.flags.length?' | Check: '+i.flags.join('; '):''}`)); });
@@ -281,7 +281,7 @@ function asText(withPhotosNote){ const b = B(), rep = b.report; const t = rep ? 
 LL.acts.bkcopy = async () => { const s = asText(false); try{ await navigator.clipboard.writeText(s); LL.toast('Copied: paste it anywhere'); }catch(e){ const ta = document.createElement('textarea'); ta.value = s; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); LL.toast('Copied'); } };
 LL.acts.bkcsv = () => { const b = B(), rep = b.report; const q = v => '"' + String(v ?? '').replace(/"/g,'""') + '"';
   const head = ['Area','Item','Brand','Model','Qty','Condition','Confidence','Photos','New retail (each)','FBMP low (each)','FBMP high (each)','FBMP low (total)','FBMP high (total)','Auction low (each)','Auction high (each)','Auction low (total)','Auction high (total)','Basis','Check on site','Source'];
-  const rows = rep.items.map(i => [i.area,i.name,i.brand,i.model,i.qty,i.condition,i.confidence,i.photos.join(' '),i.newRetail??'',i.fb[0],i.fb[1],i.fb[0]*i.qty,i.fb[1]*i.qty,i.auc[0],i.auc[1],i.auc[0]*i.qty,i.auc[1]*i.qty,i.basis,i.flags.join('; '),rep.source==='demo'?'DEMO estimate':'AI estimate']);
+  const rows = rep.items.map(i => [i.area,i.name,i.brand,i.model,i.qty,i.condition,i.confidence,i.photos.join(' '),i.newRetail??'',i.fb[0],i.fb[1],i.fb[0]*i.qty,i.fb[1]*i.qty,i.auc[0],i.auc[1],i.auc[0]*i.qty,i.auc[1]*i.qty,i.basis,i.flags.join('; '),rep.source==='demo'?'Example only':'AI estimate']);
   const t = totals(rep.items); rows.push(['TOTAL','','','',t.units,'','','','','','',t.fb[0],t.fb[1],'','',t.auc[0],t.auc[1],'','','']);
   if(b.showComm) RATES.forEach(r => rows.push([`LL commission ${r}%`,'','','','','','','','','','','','','','',Math.round(t.auc[0]*r/100),Math.round(t.auc[1]*r/100),'','','']));
   LL.download(slug(rep.job||b.job) + '-walkthrough.csv', [head].concat(rows).map(r => r.map(q).join(',')).join('\r\n'), 'text/csv'); LL.toast('CSV downloaded'); };

@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Speedy List AI × Local Liquidators (Prototype)",
+  "name": "Speedy List AI × Local Liquidators",
   "short_name": "Speedy List",
-  "description": "PROTOTYPE concept for Local Liquidators: photo inventory with AI Describe for sellers, swipeable lots and alerts for buyers. Not an official app.",
+  "description": "Speedy List AI for Local Liquidators: photo inventory with AI Describe for sellers, swipeable lots and alerts for buyers.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

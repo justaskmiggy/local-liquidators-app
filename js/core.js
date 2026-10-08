@@ -95,7 +95,7 @@ const ICON = { // 200x200 pictograms, stainless / navy palette
 };
 const VIEWS = {front:[0,0,1],detail:[-40,-20,1.6],plate:[-60,-60,2.4],back:[0,0,.9],side:[14,0,.95],interior:[-10,-14,1.35],overview:[0,0,.85],closeup:[-30,-30,1.8]};
 const artCache = new Map();
-LL.art = function(kind='other', view='front', seed=0, label='SAMPLE'){
+LL.art = function(kind='other', view='front', seed=0, label='EXAMPLE'){
   const k = kind+view+seed+label; if(artCache.has(k)) return artCache.get(k);
   const [c1,c2] = [['#091747','#00456e'],['#00456e','#ff6a2b'],['#12205a','#ffb347'],['#0a2d4d','#4aa3df']][seed%4];
   const v = VIEWS[view] || VIEWS.front;

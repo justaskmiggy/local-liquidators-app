@@ -77,6 +77,6 @@ LL.scopeLots = scope => {
   const a = LL.auction(scope); if(!a) return LL.LOTS;
   return a.live ? LL.LOTS.filter(l=>l.a===scope) : LL.RESULT_LOTS.filter(l=>l.a===scope);
 };
-LL.scopeTitle = scope => scope==='all' ? 'All sample lots' : scope==='watch' ? 'Watchlist' : scope.startsWith('s:') ? 'Saved search' : (LL.auction(scope)||{title:'Lots'}).title;
+LL.scopeTitle = scope => scope==='all' ? 'All example lots' : scope==='watch' ? 'Watchlist' : scope.startsWith('s:') ? 'Saved search' : (LL.auction(scope)||{title:'Lots'}).title;
 LL.STATES = ['AZ','CA','CO','FL','GA','IL','MN','NC','NM','NV','NY','OH','OR','PA','TX','UT','VA','WA'];
 })();

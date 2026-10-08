@@ -99,7 +99,7 @@ LL.views.export = () => { const p=S().profile, L=lots(); if(!L.length){ LL.go('#
     <div class="row"><button class="btn ghost sm" data-act="xsheet">Spreadsheet (.xlsx)</button><button class="btn ghost sm" data-act="xzip">Photos (.zip)</button></div>
     <button class="btn line sm block" data-act="dlcsv">CSV instead</button></div>
    <div class="tintcard" style="margin-top:14px"><p><b>Photos:</b> JPEG, named by lot in protocol order — <code>1001_01.jpg</code> is the lot sticker, then angles, logo, plate (and group shot). Working video is <code>1001_video.webm</code> (or .mp4). Every photo carries a small lot-number badge so nothing gets mixed up.</p><p style="margin-top:10px"><b>Large inventory?</b> Request a Dropbox link from ${esc(C.name)} — <a href="mailto:${C.email}">${C.email}</a> · <a href="tel:${C.tel}">${C.phone}</a>.</p></div>
-   <p class="small muted" style="margin-top:10px">Prototype: files are built on this phone and downloaded — nothing is uploaded.</p></div>`,
+   <p class="small muted" style="margin-top:10px">Files are built on this phone and downloaded — nothing is uploaded.</p></div>`,
    mount(el){ el.addEventListener('input',e=>{ const t=e.target; if(t.dataset.pf){ S().profile[t.dataset.pf]=t.value.trim(); LL.save(); } }); el.addEventListener('change',e=>{ if(e.target.dataset.pf) LL.render(true); }); }}; };
 function preflight(){ const bad=lots().filter(it=>P().missing(it).length), msgs=[];
   if(!S().profile.consignorId) msgs.push('Consignor ID (Column B) is not set.');
