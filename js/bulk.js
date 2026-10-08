@@ -8,6 +8,11 @@ const CFG = { endpoint: (window.LL_CONFIG && (window.LL_CONFIG.bulkEndpoint || w
 const COND = ['Like New','Good','Fair','Workhorse','Unknown'];
 const B = () => { const s=S(); if(!s.bulk) s.bulk = {job:'', area:'Kitchen', photos:[], seq:0, report:null, showComm:true, mode:'items', items:[], itemSeq:0}; const b=s.bulk; if(b.showComm===undefined) b.showComm=true;
   if(!b.items) b.items=[]; if(!b.mode) b.mode = b.photos.some(p=>!p.item) ? 'rooms' : 'items'; return b; };
+/* SELLER mode is the default for everyone. REP mode (commission, FB/auction ranges, flags, exports, "send to my assistant")
+   only on a device unlocked with #/rep/<code> (see LL.views.rep). #/rep/off turns it back off. */
+const isRep = LL.isRep = () => { try{ return localStorage.getItem('ll.rep')==='1'; }catch(e){ return false; } };
+const LEAD_URL = (window.LL_CONFIG && window.LL_CONFIG.leadEndpoint) || 'https://www.justaskmiggy.com/api/ll-lead';
+const MIGGY = { name:'Miggy', phone:'434-227-9544', sms:'+14342279544' };
 const money = n => '$' + Math.round(n||0).toLocaleString('en-US');
 const rng = (a,b) => (!(a>0) && !(b>0)) ? '—' : (Math.round(a)===Math.round(b)) ? money(a) : money(a)+'–'+money(b);
 // An item with no FB and no auction value has no price yet: never show it as $0, and block exports until it's priced.
@@ -70,7 +75,7 @@ function grid(){ const b = B(); const rp = b.photos.filter(p=>!p.item); if(!rp.l
     return `<div class="bk-grp"><div class="bk-gh"><b>${esc(a)}</b><span>${ps.length} photo${ps.length===1?'':'s'}</span></div><div class="bk-grid">${ps.map(p => `<button class="bk-th" data-act="bkphoto" data-id="${p.id}" aria-label="Photo ${label(p)}, ${esc(p.area)}"><img src="${thumbs.get(p.id)||''}" alt=""><i>${label(p)}</i></button>`).join('')}</div></div>`; }).join(''); }
 LL.views.bulk = () => { const b = B(); if(b.mode==='items') return itemsView(); const n = b.photos.filter(p=>!p.item).length;
   return {html:`${LL.modeToggle('bulk')}${bulkModeSeg('rooms')}
-  <section class="bk-hero"><div><span class="badge acc">Bulk walkthrough</span><h2>Shoot rooms, not items.</h2><p>AI lists everything it sees and prices it for Facebook Marketplace and auction.</p></div></section>
+  <section class="bk-hero"><div><span class="badge acc">Bulk walkthrough</span><h2>Shoot rooms, not items.</h2><p>${isRep()?'AI lists everything it sees and prices it for Facebook Marketplace and auction.':'AI lists everything it sees. Miggy reviews it and gets back to you within 24 hours.'}</p></div></section>
   <div class="pad bk-form">
     <label class="field"><span>Job name</span><input type="text" id="bk-job" value="${esc(b.job)}" placeholder="e.g. Husson Bakery - MD" autocomplete="off" enterkeyhint="done"></label>
     <div class="lbl">Area for new photos</div>${areaChips(b.area,'bkarea')}
@@ -80,9 +85,9 @@ LL.views.bulk = () => { const b = B(); if(b.mode==='items') return itemsView(); 
     </div>
     <p class="hint center">Fastest: shoot with your iPhone Camera, then tap <b>Add from Photos</b> and select them all. Saved on this phone, works with no signal.</p>
   </div>
-  <div class="sec"><h2>${n} photo${n===1?'':'s'}</h2>${n?`<button class="link" data-act="bkshare">${I.share.replace('<svg','<svg width="16" height="16"')} Send to my assistant</button>`:''}</div>
+  <div class="sec"><h2>${n} photo${n===1?'':'s'}</h2>${n&&isRep()?`<button class="link" data-act="bkshare">${I.share.replace('<svg','<svg width="16" height="16"')} Send to my assistant</button>`:''}</div>
   <div class="bk-photos">${grid()}</div>
-  ${b.report?`<div class="pad"><a class="btn ghost block sm" href="#/sell/bulk/report">${I.check} Open last report (${b.report.items.length} items)${b.report.stale?' · new photos since':''}</a></div>`:''}
+  ${b.report?`<div class="pad"><a class="btn ghost block sm" href="${isRep()?'#/sell/bulk/report':b.report.lead?'#/sell/bulk/thanks':'#/sell/bulk/contact'}">${I.check} ${isRep()?'Open last report':b.report.lead?'Your inventory summary':'Finish: send to Miggy'} (${b.report.items.length} items)${b.report.stale?' · new photos since':''}</a></div>`:''}
   ${b.photos.length?`<div class="pad"><button class="btn danger sm block" data-act="bknew">${I.trash} Start a new walkthrough</button></div>`:''}
   <div style="height:90px"></div>
   <div class="stickyfoot noprint"><button class="btn block bk-go" data-act="bkanalyze" ${n||b.items.length?'':'disabled'}>${I.sparkle} Analyze ${n||''} photo${n===1?'':'s'}${b.items.length?` + ${b.items.length} item${b.items.length===1?'':'s'}`:''}</button></div>`,
@@ -188,7 +193,7 @@ function itemsView(){ const b = B(), items = b.items, bad = incomplete(), cur = 
   const startHref = cur && !irule(cur.n).ok ? `#/sell/bulk/item/${cur.n}` : '#/sell/bulk/item/new';
   const roomN = b.photos.filter(p=>!p.item).length;
   return {html:`${LL.modeToggle('bulk')}${bulkModeSeg('items')}
-  <section class="bk-hero"><div><span class="badge acc">Bulk · item by item</span><h2>4–7 photos per item.</h2><p>Front, side, back, inside, then the <b>data plate</b> and <b>brand logo</b>. 7 max. AI reads each item and prices it for Facebook Marketplace and auction.</p></div></section>
+  <section class="bk-hero"><div><span class="badge acc">Bulk · item by item</span><h2>4–7 photos per item.</h2><p>Front, side, back, inside, then the <b>data plate</b> and <b>brand logo</b>. 7 max. ${isRep()?'AI reads each item and prices it for Facebook Marketplace and auction.':'AI reads each item, then Miggy gets back to you within 24 hours.'}</p></div></section>
   <div class="pad bk-form">
     <label class="field"><span>Job name</span><input type="text" id="bk-job" value="${esc(b.job)}" placeholder="e.g. Husson Bakery - MD" autocomplete="off" enterkeyhint="done"></label>
     <div class="lbl">Area for the next item</div>${areaChips(b.area,'bkarea')}
@@ -198,10 +203,10 @@ function itemsView(){ const b = B(), items = b.items, bad = incomplete(), cur = 
     </div>
     <p class="hint center">From Photos: pick 4 to 7 shots of <b>one</b> item. They fill the slots in order: front, side, back, inside, plate, logo, extra.</p>
   </div>
-  <div class="sec"><h2>${items.length} item${items.length===1?'':'s'}</h2>${b.photos.length?`<button class="link" data-act="bkshare">${I.share.replace('<svg','<svg width="16" height="16"')} Send to my assistant</button>`:''}</div>
+  <div class="sec"><h2>${items.length} item${items.length===1?'':'s'}</h2>${b.photos.length&&isRep()?`<button class="link" data-act="bkshare">${I.share.replace('<svg','<svg width="16" height="16"')} Send to my assistant</button>`:''}</div>
   <div class="pad bk-items">${items.length ? items.slice().reverse().map(itemCardHTML).join('') : `<div class="bk-empty">${I.camera}<h3>Shoot your first item</h3><p>4 required angles + the data plate + the brand logo. Up to 7 photos per item.</p></div>`}</div>
   ${roomN?`<p class="pad small muted">Plus ${roomN} room-scan photo${roomN===1?'':'s'} (see Quick room scan).</p>`:''}
-  ${b.report?`<div class="pad"><a class="btn ghost block sm" href="#/sell/bulk/report">${I.check} Open last report (${b.report.items.length} items)${b.report.stale?' · new photos since':''}</a></div>`:''}
+  ${b.report?`<div class="pad"><a class="btn ghost block sm" href="${isRep()?'#/sell/bulk/report':b.report.lead?'#/sell/bulk/thanks':'#/sell/bulk/contact'}">${I.check} ${isRep()?'Open last report':b.report.lead?'Your inventory summary':'Finish: send to Miggy'} (${b.report.items.length} items)${b.report.stale?' · new photos since':''}</a></div>`:''}
   ${b.photos.length||items.length?`<div class="pad"><button class="btn danger sm block" data-act="bknew">${I.trash} Start a new walkthrough</button></div>`:''}
   <div style="height:90px"></div>
   <div class="stickyfoot noprint"><button class="btn block bk-go" data-act="bkanalyze" ${items.length||roomN?'':'disabled'}>${I.sparkle} ${bad.length?`Item ${bad[0].n}: ${irule(bad[0].n).reqDone<IMIN?`${IMIN-irule(bad[0].n).reqDone} more required`:'needs plate / logo'}`:`Analyze ${items.length} item${items.length===1?'':'s'}`}</button></div>`,
@@ -239,7 +244,7 @@ LL.views.bulkitem = r => { const b = B();
     <button class="side bk-nextitem" data-x="nextitem"><span class="rbtn">${I.chev}</span><span>Next item</span></button></div></div>`,
   mount(el){ let stream = null, busy = false, slot = cur.k; const video = el.querySelector('video'), fb = el.querySelector('.cam-fb');
     const stop = () => { if(stream) stream.getTracks().forEach(t => t.stop()); stream = null; }; LL.cleanup.push(stop);
-    const upd = () => { const r = irule(it.n), s = slotOf(slot), full = r.total >= IMAX;
+    const upd = () => { if(!el.querySelector('#bi-count')) return; const r = irule(it.n), s = slotOf(slot), full = r.total >= IMAX;
       el.querySelector('#bi-count').textContent = rtext(r);
       el.querySelector('#bi-dots').innerHTML = SLOTS.map(x => `<i class="${slotPh(it.n,x.k)?'done':''} ${x.k===slot?'cur':''} ${x.req?'':'opt'}" title="${esc(x.n)}"></i>`).join('');
       el.querySelector('#bi-sub').textContent = r.reqDone<IMIN ? `${IMIN-r.reqDone} more required` : r.plate==='need' && r.brand==='need' ? 'Now the data plate + brand logo' : r.plate==='need' ? 'Now the data plate' : r.brand==='need' ? 'Now the brand logo' : full ? 'Item full (7 of 7). Tap Next item.' : 'Item done. 1 optional extra, or Next item.';
@@ -287,14 +292,15 @@ LL.acts.bkanalyze = async () => { const b = B(); if(running || (!b.photos.length
   running = true; await ready;
   const ov = LL.$('#overlay'); const tn = b.photos.slice(0, 9).map(p => `<div><img src="${thumbs.get(p.id)||''}" alt=""></div>`).join('');
   ov.innerHTML = `<div class="bk-analyzing"><div class="scan"><div class="imgs">${tn}</div><p id="bk-step">Looking at your photos…</p></div>
-    <div class="bk-steps"><div data-s="0" class="on"><i class="spin"></i>Spotting every item in ${b.photos.length} photo${b.photos.length===1?'':'s'}</div><div data-s="1"><i></i>Reading brands &amp; model plates</div><div data-s="2"><i></i>Researching used values: Marketplace &amp; auction</div><div data-s="3"><i></i>Building your report</div></div>
+    <div class="bk-steps"><div data-s="0" class="on"><i class="spin"></i>Spotting every item in ${b.photos.length} photo${b.photos.length===1?'':'s'}</div><div data-s="1"><i></i>Reading brands &amp; model plates</div><div data-s="2"><i></i>${isRep()?'Researching used values: Marketplace &amp; auction':'Estimating new and used values'}</div><div data-s="3"><i></i>Building your report</div></div>
     <p class="small center muted" style="margin-top:14px">Keep this screen open. Your photos stay saved on this phone.</p></div>`;
   ov.classList.remove('bk-tr'); ov.classList.add('on');
   const step = (i, txt) => { ov.querySelectorAll('[data-s]').forEach(d => { const k=+d.dataset.s; d.className = k<i?'done':k===i?'on':''; d.querySelector('i').className = k<i?'ok':k===i?'spin':''; }); if(txt) ov.querySelector('#bk-step').textContent = txt; };
   let rep;
-  try{ rep = b.mode==='items' ? await runItems(b, step) : await runReal(b, step); }catch(e){ console.info('[Bulk] backend unavailable → DEMO:', e.message); rep = await runDemo(b, step, e); }
-  step(4); b.report = rep; LL.save(); running = false;
-  await new Promise(r => setTimeout(r, 400)); ov.classList.remove('on'); ov.innerHTML = ''; LL.go('#/sell/bulk/report');
+  try{ rep = b.mode==='items' ? await runItems(b, step) : await runReal(b, step); }
+  catch(e){ console.info('[Bulk] backend unavailable:', e.message); rep = isRep() ? await runDemo(b, step, e) : sellerFallback(b); }
+  step(4); if(b.report && b.report.lead) rep.prevLead = b.report.lead; b.report = rep; LL.save(); running = false;
+  await new Promise(r => setTimeout(r, 400)); ov.classList.remove('on'); ov.innerHTML = ''; LL.go(isRep() ? '#/sell/bulk/report' : '#/sell/bulk/contact');
 };
 async function imgOf(p){ const rec = await store.get(p.id); if(!rec) return null; const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = rec.full; });
   return canvasURL(img, img.naturalWidth, img.naturalHeight, 1280, .72); }
@@ -387,10 +393,344 @@ async function runDemo(b, step, err){
   return { source:'demo', why, at: Date.now(), job: b.job, photos: b.photos.length, items, notes: '' };
 }
 
+/* ======================= SELLER SIDE: contact step → lead to Miggy → thank-you + inventory + tips =======================
+   Sellers never see commission, FB Marketplace ranges, rep flags or the example report. */
+/* AI unreachable in seller mode: never show example data. List what they shot; Miggy values it by hand. */
+function sellerFallback(b){ const items = [];
+  if(b.mode==='items') b.items.filter(x => itemPh(x.n).length).forEach(x => items.push(norm({name:`Item ${x.n}`, area:x.area, qty:1, confidence:'low', photos:AI_ORDER.map(k => slotPh(x.n,k)).filter(Boolean).map(label), flags:['AI could not read this item: price by hand']})));
+  const room = b.photos.filter(p => !p.item); areasOf(room).forEach(a => { const ps = room.filter(p => p.area===a); items.push(norm({name:`${a}: ${ps.length} photo${ps.length===1?'':'s'}`, area:a, qty:1, confidence:'low', photos:ps.map(label), flags:['AI could not read these photos: price by hand']})); });
+  items.forEach((it, i) => { if(b.mode==='items' && i < b.items.length){ const m = /^Item (\d+)$/.exec(it.name); if(m) it.itemNo = +m[1]; } });
+  return { source:'none', at: Date.now(), job: b.job, photos: b.photos.length, mode: b.mode, items, notes: '' }; }
+const byLabel = l => B().photos.find(p => label(p)===l);
+const thumbOf = it => { const p = (it.photos||[]).map(byLabel).find(Boolean); return p ? thumbs.get(p.id) : ''; };
+const usedOf = i => i.auc[1] > 0 ? i.auc : i.fb[1] > 0 ? i.fb : [0,0];
+/* Reserve (rep only, never shown or advertised to sellers): '' = No reserve (default) | '25' | '50' | '75' = % of the auction estimate (midpoint × qty) | 'custom' = $ amount */
+const RES_OPTS = [['','No reserve'],['25','25% of auction est.'],['50','50% of auction est.'],['75','75% of auction est.'],['custom','Custom $']];
+const resMode = i => i.reserveMode || (i.reserve > 0 ? 'custom' : '');
+const reserveOf = i => { const m = resMode(i); if(m==='custom') return i.reserve > 0 ? Math.round(i.reserve) : 0; if(!m) return 0; return Math.round((i.auc[0]+i.auc[1])/2 * i.qty * (+m)/100); };
+const resLabel = i => { const m = resMode(i), v = reserveOf(i); return !m || !v ? '' : m==='custom' ? `Reserve ${money(v)} (custom)` : `Reserve ${money(v)} (${m}% of auction est.)`; };
+function sellerTotals(items){ let nw = 0, nwMissing = 0, u = [0,0];
+  items.forEach(i => { if(i.newRetail > 0) nw += i.newRetail*i.qty; else nwMissing++; const v = usedOf(i); u[0] += v[0]*i.qty; u[1] += v[1]*i.qty; }); return {nw, nwMissing, used:u}; }
+const TIMELINES = ['ASAP','2-4 weeks','1-3 months'];
+const SITUATIONS = ['Closing','Remodeling','Upgrading','Other'];
+LL.views.bulkcontact = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#/sell/bulk', true); return {html:''}; }
+  const c = b.contact || {}, n = rep.items.length, again = !!(rep.lead || rep.prevLead);
+  const opt = (list, v, ph) => `<option value="">${ph}</option>` + list.map(x => `<option ${x===v?'selected':''}>${esc(x)}</option>`).join('');
+  return {html:`<div class="pad sl-contact">
+   <div class="sl-brand"><img src="assets/logo.jpg" alt="LocalLiquidators.com" width="150" height="35"><span>Just Ask Miggy × LocalLiquidators.com</span></div>
+   <h2 class="sl-h">${again?'Send Miggy your update':'Almost done. Where can Miggy reach you?'}</h2>
+   <p class="muted">Your ${n} item${n===1?'':'s'} and photos go straight to Miggy. He’ll be in touch within 24 hours with next steps.</p>
+   <form id="sl-form" novalidate autocomplete="on">
+    <label class="field"><span>Your name <i>*</i></span><input name="name" required autocomplete="name" value="${esc(c.name||'')}"></label>
+    <div class="row"><label class="field"><span>Mobile phone</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(c.phone||'')}" placeholder="10 digits"></label>
+     <label class="field"><span>Email</span><input name="email" type="email" inputmode="email" autocomplete="email" value="${esc(c.email||'')}"></label></div>
+    <p class="hint" style="margin:-6px 0 12px">Phone or email, whichever you check first.</p>
+    <label class="field"><span>Business name</span><input name="business" autocomplete="organization" value="${esc(c.business||b.job||'')}"></label>
+    <label class="field"><span>Where is the equipment? (city, state)</span><input name="city" autocomplete="address-level2" value="${esc(c.city||'')}" placeholder="e.g., Baltimore, MD"></label>
+    <div class="row"><label class="field"><span>Situation</span><select name="situation">${opt(SITUATIONS, c.situation, 'Pick one')}</select></label>
+     <label class="field"><span>Needs to be gone</span><select name="timeline">${opt(TIMELINES, c.timeline, 'Pick one')}</select></label></div>
+    <div class="row"><label class="field"><span>Lease ending / move-out date <small class="muted">(optional)</small></span><input name="leaseEnd" type="date" value="${esc(c.leaseEnd||'')}"></label>
+     <label class="field"><span>Is the landlord involved?</span><select name="landlord">${opt(['Yes','No','Not sure'], c.landlord, 'Pick one')}</select></label></div>
+    <label class="field sl-ll"${c.landlord==='Yes'||c.landlord==='Not sure'?'':' hidden'}><span>Landlord name / contact <small class="muted">(optional)</small></span><input name="landlordContact" autocomplete="off" value="${esc(c.landlordContact||'')}" placeholder="Name, phone or email"></label>
+    <label class="field"><span>Anything else you want us to know?</span><textarea name="notes" rows="3" placeholder="Last day open, items not for sale, access or parking…">${esc(c.notes||'')}</textarea></label>
+    <input type="text" name="company_site" tabindex="-1" autocomplete="off" aria-hidden="true" class="sl-hp">
+    <p class="sl-err" id="sl-err" role="alert" hidden></p>
+    <button class="btn accent block bk-big" type="submit" id="sl-send">${I.check} Send to Miggy</button>
+    <p class="hint center" style="margin-top:8px">Questions? Text Miggy <a href="sms:${MIGGY.sms}">${MIGGY.phone}</a></p>
+   </form></div><div style="height:30px"></div>`,
+  mount(el){ const f = el.querySelector('#sl-form'), err = el.querySelector('#sl-err'), btn = el.querySelector('#sl-send');
+    f.elements.landlord.addEventListener('change', () => { el.querySelector('.sl-ll').hidden = !/^(Yes|Not sure)$/.test(f.elements.landlord.value); });
+    f.addEventListener('submit', async e => { e.preventDefault(); const v = k => (f.elements[k].value || '').trim();
+      const show = m => { err.textContent = m; err.hidden = false; err.scrollIntoView({block:'center'}); };
+      const c = {name:v('name'), phone:v('phone'), email:v('email'), business:v('business'), city:v('city'), situation:v('situation'), timeline:v('timeline'), leaseEnd:v('leaseEnd'), landlord:v('landlord'), landlordContact:/^(Yes|Not sure)$/.test(v('landlord'))?v('landlordContact'):'', notes:v('notes')};
+      b.contact = c; LL.save();
+      if(!c.name) return show('Please enter your name.');
+      if(!c.phone && !c.email) return show('Please add a phone number or email so Miggy can reach you.');
+      if(c.phone && c.phone.replace(/\D/g,'').length < 10) return show('Please enter a 10-digit phone number.');
+      if(c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) return show('That email address doesn’t look right.');
+      err.hidden = true; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Sending your photos to Miggy…';
+      try{ const r = await sendLead(b, c, v('company_site')); rep.lead = {id:r.id, at:Date.now(), notified:r.notified}; rep.stale = false; LL.save(); LL.go('#/sell/bulk/thanks'); }
+      catch(ex){ btn.disabled = false; btn.innerHTML = `${I.check} Try again`;
+        show((ex && ex.message && ex.user ? ex.message : 'That didn’t go through. Check your signal and tap Try again.') + ` Or text Miggy at ${MIGGY.phone}.`); } }); } }; };
+async function smallPhoto(p, max){ const rec = await store.get(p.id); if(!rec) return null; const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = rec.full; });
+  return canvasURL(img, img.naturalWidth, img.naturalHeight, max||720, .7); }
+async function sendLead(b, contact, hp){ const rep = b.report, t = totals(rep.items), st = sellerTotals(rep.items);
+  /* photos for Miggy: per item the front + data plate first, then the rest, max 30 */
+  const pick = []; const firsts = rep.items.map(i => (i.photos||[]).map(byLabel).filter(Boolean));
+  firsts.forEach(ps => { const f = ps.find(p => p.slot==='front') || ps[0]; if(f) pick.push(f); });
+  firsts.forEach(ps => { const pl = ps.find(p => p.slot==='plate'); if(pl && !pick.includes(pl)) pick.push(pl); });
+  b.photos.forEach(p => { if(!pick.includes(p)) pick.push(p); });
+  const photos = []; for(const p of pick.slice(0, 30)){ const d = await smallPhoto(p, 720).catch(() => null); if(d) photos.push({name:`${p.item?'item'+p.item+'-'+p.slot:slug(p.area)}-${label(p)}.jpg`, dataUrl:d}); }
+  let repPdf = ''; try{ const pdf = await reportPDF({rep:true, comm:false, q:.7}); if(pdf.size < 5.5e6) repPdf = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(''); fr.readAsDataURL(pdf); }); }catch(e){ console.info('[lead] pdf', e); }
+  const deal = dealScore(rep.items, contact);
+  const body = { company_site: hp||'', job: b.job, mode: b.mode, aiSource: rep.source, photoCount: b.photos.length, contact, deal: {score: deal.score, reason: deal.reason}, repPdf,
+    totals: {newTotal: st.nw, aucLow: t.auc[0], aucHigh: t.auc[1], fbLow: t.fb[0], fbHigh: t.fb[1]},
+    items: rep.items.map(i => ({itemNo:i.itemNo||null, name:i.name, brand:i.brand, model:i.model, qty:i.qty, condition:i.condition, area:i.area, newRetail:i.newRetail||0, aucLow:i.auc[0], aucHigh:i.auc[1], fbLow:i.fb[0], fbHigh:i.fb[1], reserve:reserveOf(i), photos:i.photos, flags:i.flags})),
+    photos };
+  const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 60000);
+  let r; try{ r = await fetch(LEAD_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body), signal: ctrl.signal}); } finally { clearTimeout(to); }
+  let j = null; try{ j = await r.json(); }catch(e){}
+  if(!r.ok || !j || !j.ok) throw Object.assign(new Error((j && j.error) || 'lead ' + r.status), {user: !!(j && j.error)});
+  return j; }
+const TIPS = [
+  ['Clean it up','Degrease cooking equipment, wipe down stainless, and clean door gaskets and filters. Clean equipment photographs better and bids higher.'],
+  ['Empty and clear','Empty reach-ins, coolers and shelves so buyers see the full unit and its condition.'],
+  ['Move small items off the shelves','Pull pans, utensils and smallwares down and group like items together. Grouped smallwares sell as lots instead of getting lost.'],
+  ['Keep it plugged in and running','Coolers holding temp and equipment that powers on show buyers it works. Working units bring stronger bids.'],
+  ['Photograph the data plates','Model, serial and voltage let buyers search for exactly what they need.'],
+  ['Gather the paperwork','Manuals, receipts, warranty or service records and model info all help buyers bid with confidence.'],
+  ['Clear the path for pickup','Open walkways and doors to the loading area so pickup day goes fast and nothing gets damaged.'],
+  ['Note what’s bolted down or hardwired','Tell Miggy what is hardwired, gas-connected or bolted down so removal is planned ahead.'],
+  ['Tell us what’s staying','Point out anything that belongs to the landlord, is leased, or that you’re keeping, so it never gets listed.'],
+  ['Be available on pickup days','Someone on site (or a lockbox plan) keeps pickups smooth and on schedule.']];
+const WHY = [
+  ['Competitive bidding','Buyers bid against each other, which often beats a single lowball buyout offer.'],
+  ['Buyers from everywhere','Your equipment reaches buyers across the country, not just whoever is local this week.'],
+  ['No Marketplace headaches','No no-shows, endless haggling, strangers texting at all hours, or scam payments.'],
+  ['One sale clears it all','Big equipment, furniture and smallwares lots all go in the same sale.'],
+  ['We handle the work','Listing, buyer questions, payment and pickup scheduling are handled for you.'],
+  ['A clear timeline','A set auction date and pickup window, so you know when the space will be empty.'],
+  ['Beat the lease deadline','Auctions move fast, so your equipment can be sold and out before your lease ends or the landlord takes possession of what’s left.']];
+const WHYUS = [
+  ['One person, start to finish','You deal with Miggy the whole way, and he knows restaurant equipment.'],
+  ['Fast response','Miggy gets back to you within 24 hours.'],
+  ['Out before your lease ends','We move fast, so your equipment can be sold and picked up before your lease ends or the landlord takes possession of what’s left.'],
+  ['See what you have','An AI-powered inventory and valuation report with estimated new and used values, like this one.'],
+  ['Nationwide buyers','LocalLiquidators.com reaches buyers across the country, with a large team handling closeouts across the US.'],
+  ['We do the work','Listing, photos, buyer communication, payment and pickup scheduling.'],
+  ['Flexible options','Auction, consignment, or an outright buy. Whatever fits your situation.'],
+  ['Local service','Based in Virginia (Waynesboro), not a faceless call center.']];
+LL.views.bulkthanks = () => { const b = B(), rep = b.report; if(!rep || !rep.lead){ LL.go(rep ? '#/sell/bulk/contact' : '#/sell/bulk', true); return {html:''}; }
+  const st = sellerTotals(rep.items), first = ((b.contact||{}).name||'').split(/\s+/)[0];
+  const row = i => { const u = usedOf(i), tn = thumbOf(i);
+    return `<div class="sl-item"><div class="sl-th">${tn?`<img src="${tn}" alt="">`:I.camera}</div><div class="sl-it"><b>${i.itemNo?`<span class="bk-ino">#${i.itemNo}</span> `:''}${esc(i.name)}${i.qty>1?` <span class="bk-q">×${i.qty}</span>`:''}</b>
+      ${(i.brand||i.model)?`<small>${esc([i.brand,i.model].filter(Boolean).join(' '))}</small>`:''}<span class="sl-cond">${esc(i.condition==='Unknown'?'Condition: Miggy will confirm':i.condition)}</span>
+      <div class="sl-vals"><div><small>Est. value NEW</small><b>${i.newRetail>0?'~'+money(i.newRetail*i.qty):'Miggy will confirm'}</b></div><div><small>Est. value USED</small><b>${u[1]>0?rng(u[0]*i.qty,u[1]*i.qty):'Miggy will confirm'}</b></div></div></div></div>`; };
+  return {html:`<div class="sl-rep">
+  <section class="sl-hero"><div class="sl-brand light"><img src="assets/logo.jpg" alt="LocalLiquidators.com" width="150" height="35"><span>Just Ask Miggy × LocalLiquidators.com</span></div>
+   <div class="sl-check">${I.check}</div><h2>Thank you${first?', '+esc(first):''}!</h2><p>Miggy will be in touch within 24 hours.</p>
+   <p class="sl-sub">Your ${rep.items.length} item${rep.items.length===1?'':'s'} and photos were sent to Miggy. Questions before then? Text Miggy at <a href="sms:${MIGGY.sms}">${MIGGY.phone}</a>.</p></section>
+  <div class="pad"><div class="card pad sl-tot"><div class="lbl">Your inventory · estimated value</div>
+    <div class="sl-vals big"><div><small>Est. value NEW</small><b>${st.nw>0?'~'+money(st.nw):'Miggy will confirm'}</b>${st.nw>0&&st.nwMissing?`<em>${st.nwMissing} item${st.nwMissing===1?'':'s'} still to price</em>`:''}</div><div><small>Est. value USED</small><b>${st.used[1]>0?rng(st.used[0],st.used[1]):'Miggy will confirm'}</b></div></div>
+    <p class="small muted" style="margin-top:8px">NEW = about what it would cost to replace. USED = what we valued it at for auction. Photo-based estimates, not an appraisal or a guarantee. Miggy confirms everything with you.</p></div></div>
+  ${shareBlock(false)}
+  <div class="sec"><h2>Inventory list</h2><span class="small muted">${rep.items.length} line${rep.items.length===1?'':'s'}</span></div>
+  <div class="pad sl-list">${rep.items.map(row).join('')}</div>
+  <div class="pad"><div class="card pad sl-tips" id="sl-tips"><div class="lbl">How to get the most from your auction (hassle free)</div>
+    <ol class="sl-ol">${TIPS.map(t => `<li><b>${esc(t[0])}</b><span>${esc(t[1])}</span></li>`).join('')}</ol></div></div>
+  <div class="pad"><div class="card pad sl-why"><div class="lbl">Why auction instead of a buyout or Facebook Marketplace</div>
+    <ul class="sl-ul">${WHY.map(t => `<li>${I.check}<div><b>${esc(t[0])}</b><span>${esc(t[1])}</span></div></li>`).join('')}</ul></div></div>
+  <div class="pad"><div class="card pad sl-why sl-us"><div class="lbl">Why Just Ask Miggy + LocalLiquidators.com</div>
+    <ul class="sl-ul">${WHYUS.map(t => `<li>${I.check}<div><b>${esc(t[0])}</b><span>${esc(t[1])}</span></div></li>`).join('')}</ul></div></div>
+  <div class="pad"><div class="card pad sl-q"><b>Questions?</b> Text Miggy at <a href="sms:${MIGGY.sms}">${MIGGY.phone}</a>.<br><span class="small muted">Just Ask Miggy · LocalLiquidators.com</span></div>
+   <div class="row noprint" style="margin-top:12px"><a class="btn ghost sm" href="#/sell/bulk">${I.camera} Add more items</a><button class="btn ghost sm" data-act="slshare">${I.share} Share my report</button></div></div>
+  <div style="height:40px"></div></div>`}; };
+LL.acts.bkpdfs = () => setTimeout(() => window.print(), 150);
+
+/* ---------- reports: share / email / text / Excel / CSV / PDF ----------
+   Seller versions: NEW + USED only (never commission, FB, reserves, deal score or flags).
+   Rep versions (rep mode only): + FB Marketplace, auction, reserves, deal score, commission at the chosen rate + net to seller. */
+const enc8 = new TextEncoder();
+const RATE_OPTS = [20, 25, 30, 35, 40];
+const commRate = () => { const r = +B().commRate; return RATE_OPTS.includes(r) ? r : 35; };
+function commOf(items, rate){ const t = totals(items), r = (rate ?? commRate())/100; return {rate: rate ?? commRate(), gross: t.auc, comm: [t.auc[0]*r, t.auc[1]*r], net: [t.auc[0]*(1-r), t.auc[1]*(1-r)]}; }
+/* Deal score 1-10 (rep only): auction value, item count, condition, sought-after brands/categories, urgency (lease date / timeline), pickup complexity */
+const HOT_BRANDS = /\b(true|hobart|rational|vulcan|traulsen|hoshizaki|manitowoc|scotsman|turbochef|merrychef|alto.?shaam|garland|southbend|blodgett|beverage.?air|delfield|frymaster|pitco|imperial|wolf|vollrath|robot.?coupe|berkel|henny.?penny|ice.?o.?matic|taylor|hatco|cleveland|groen|middleby|lincoln|unox|perlick|continental|atosa|globe|bunn|fetco|la marzocco|nuova simonelli|mazzer|kitchenaid|cambro)\b/i;
+const HOT_CATS = /(mixer|reach.?in|refrigerat|freezer|ice (machine|maker)|combi|convection|oven|range|fryer|griddle|charbroil|prep table|sandwich|pizza|slicer|espresso|dish ?machine|dishwasher|steam|kettle|proofer|display case|merchandiser|walk.?in|hood|smoker|sheeter)/i;
+const HARD = /(walk.?in|hood|hardwir|gas.?connect|gas line|bolted|built.?in|plumbed|3.?phase|three.?phase|remote condens|cooler box|install)/i;
+function dealScore(items, contact){ contact = contact || {}; const priced = items.filter(i => !unpriced(i)), t = totals(items);
+  const mid = i => { const u = i.auc[1] > 0 ? i.auc : i.fb.map(v => v*0.6); return (u[0]+u[1])/2*i.qty; };
+  const aucMid = items.reduce((a,i) => a + mid(i), 0);
+  const vPts = aucMid >= 30000 ? 4 : aucMid >= 15000 ? 3.5 : aucMid >= 7500 ? 3 : aucMid >= 3000 ? 2.2 : aucMid >= 1000 ? 1.4 : aucMid > 0 ? 0.6 : 0;
+  const n = priced.length, nPts = n >= 15 ? 1.5 : n >= 8 ? 1.25 : n >= 4 ? 1 : n >= 2 ? 0.7 : n ? 0.4 : 0;
+  const CW = {'Like New':1, 'Good':.8, 'Fair':.5, 'Workhorse':.45, 'Unknown':.6};
+  const cAvg = items.length ? items.reduce((a,i) => a + (CW[i.condition] ?? .6), 0) / items.length : 0, cPts = 1.5 * cAvg;
+  const hot = i => HOT_BRANDS.test(i.brand + ' ' + i.name) || HOT_CATS.test(i.name), hotItems = items.filter(hot);
+  const hotShare = aucMid > 0 ? items.filter(hot).reduce((a,i) => a + mid(i), 0) / aucMid : (items.length ? hotItems.length/items.length : 0), hPts = 1.5 * hotShare;
+  let days = null; if(contact.leaseEnd){ const d = new Date(contact.leaseEnd + 'T12:00:00'); if(!isNaN(d)) days = Math.round((d - Date.now()) / 864e5); }
+  const uPts = days !== null ? (days <= 14 ? 1 : days <= 45 ? .85 : days <= 90 ? .55 : .3) : ({'ASAP':.75, '2-4 weeks':.6, '1-3 months':.4}[contact.timeline] ?? .3);
+  const hard = items.filter(i => HARD.test(i.name + ' ' + (i.flags||[]).join(' ')));
+  const pPts = hard.length ? Math.max(0, .5 - hard.length*.2) : .5; // easy pickup = full 0.5
+  const raw = vPts + nPts + cPts + hPts + uPts + pPts, score = Math.max(1, Math.min(10, Math.round(raw)));
+  const conds = items.map(i => i.condition).filter(c => c && c !== 'Unknown'), topCond = conds.sort((a,b) => conds.filter(x=>x===b).length - conds.filter(x=>x===a).length)[0];
+  const brands = [...new Set(hotItems.map(i => (HOT_BRANDS.exec(i.brand + ' ' + i.name)||[])[0]).filter(Boolean).map(x => x.replace(/\b\w/g, c => c.toUpperCase())))].slice(0, 3);
+  const bits = [ t.auc[1] > 0 ? `auction ${rng(t.auc[0], t.auc[1])}` : 'no auction value yet', `${items.length} item${items.length===1?'':'s'}`, topCond ? `mostly ${topCond.toLowerCase()}` : 'condition unknown',
+    hotShare >= .5 ? `easy sellers${brands.length ? ' (' + brands.join(', ') + ')' : ''}` : hotShare > 0 ? `some easy sellers${brands.length ? ' (' + brands.join(', ') + ')' : ''}` : 'few in-demand brands',
+    days !== null ? (days < 0 ? `lease ended ${-days} day${days===-1?'':'s'} ago` : `lease ends in ${days} day${days===1?'':'s'}`) : contact.timeline ? `timeline ${contact.timeline}` : 'no deadline given',
+    hard.length ? `${hard.length} hard pickup${hard.length===1?'':'s'} (${hard.slice(0,2).map(i => i.name.toLowerCase()).join(', ')})` : 'simple pickup' ];
+  return {score, reason: bits.join(' · '), parts: {value:vPts, count:nPts, condition:+cPts.toFixed(2), demand:+hPts.toFixed(2), urgency:uPts, pickup:pPts}, days}; }
+
+const fileBase = rep => (rep ? 'rep-report-' : 'just-ask-miggy-inventory-') + slug(B().job || (B().contact||{}).business || 'summary') + '-' + new Date().toISOString().slice(0,10);
+const SHEAD = ['Item #','Item','Brand','Model','Qty','Condition','Area','Est. value NEW ($)','Est. value USED low ($)','Est. value USED high ($)'];
+const RHEAD = ['Item #','Item','Brand','Model','Qty','Condition','Area','Est. NEW ($)','USED low ($)','USED high ($)','FB Marketplace low ($)','FB Marketplace high ($)','Auction low ($)','Auction high ($)','Reserve ($)','Check on site','Photos'];
+const $n = v => v > 0 ? Math.round(v) : '';
+function sheetData(isRepX){ const rep = B().report, items = rep.items;
+  if(!isRepX){ const st = sellerTotals(items);
+    const rows = items.map(i => { const u = usedOf(i); return [i.itemNo ? '#'+i.itemNo : '', i.name, i.brand||'', i.model||'', i.qty, i.condition==='Unknown'?'':i.condition, i.area||'', $n(i.newRetail*i.qty), u[1]>0 ? Math.round(u[0]*i.qty) : '', u[1]>0 ? Math.round(u[1]*i.qty) : '']; });
+    return {head: SHEAD, rows, total: ['','TOTAL','','','','','', $n(st.nw), st.used[1]>0?Math.round(st.used[0]):'', st.used[1]>0?Math.round(st.used[1]):''],
+      extra: [], notes: ['Estimates from photos only, not an appraisal. NEW = about what it would cost to replace. USED = what we valued it at for auction.', 'Just Ask Miggy × LocalLiquidators.com · Questions? Text Miggy ' + MIGGY.phone]}; }
+  const st = sellerTotals(items), t = totals(items), cm = commOf(items), d = dealScore(items, B().contact), c = B().contact || {};
+  const rows = items.map(i => { const u = usedOf(i); return [i.itemNo ? '#'+i.itemNo : '', i.name, i.brand||'', i.model||'', i.qty, i.condition, i.area||'', $n(i.newRetail*i.qty), u[1]>0?Math.round(u[0]*i.qty):'', u[1]>0?Math.round(u[1]*i.qty):'', $n(i.fb[0]*i.qty), $n(i.fb[1]*i.qty), $n(i.auc[0]*i.qty), $n(i.auc[1]*i.qty), $n(reserveOf(i)), (i.flags||[]).join('; '), (i.photos||[]).join(' ')]; });
+  const blank = n => Array(n).fill('');
+  return {head: RHEAD, rows, total: ['','TOTAL','','','','','', $n(st.nw), Math.round(st.used[0])||'', Math.round(st.used[1])||'', $n(t.fb[0]), $n(t.fb[1]), $n(t.auc[0]), $n(t.auc[1]), $n(items.reduce((a,i)=>a+reserveOf(i),0)), '', ''],
+    extra: [['', `Our commission (${cm.rate}% of auction)`, ...blank(10), Math.round(cm.comm[0]), Math.round(cm.comm[1])], ['', 'Net to seller (auction minus commission)', ...blank(10), Math.round(cm.net[0]), Math.round(cm.net[1])]],
+    notes: [`Deal score ${d.score}/10: ${d.reason}`, `Seller: ${[c.name, c.business, c.phone, c.email, c.city].filter(Boolean).join(' · ') || '—'}`,
+      `Lease end: ${c.leaseEnd || '—'} · Landlord involved: ${c.landlord || '—'}${c.landlordContact ? ' (' + c.landlordContact + ')' : ''} · Situation: ${c.situation || '—'} · Timeline: ${c.timeline || '—'}`,
+      c.notes ? `Seller notes: ${c.notes}` : '', 'REP ONLY: contains commission. Do not send to the seller. Photo-based AI estimates, not an appraisal.'].filter(Boolean)}; }
+function toCSV(isRepX){ const d = sheetData(isRepX), q = v => '"' + String(v ?? '').replace(/"/g,'""') + '"';
+  return '\ufeff' + [d.head, ...d.rows, d.total, ...d.extra, [], ...d.notes.map(x => [x])].map(r => r.map(q).join(',')).join('\r\n'); }
+function toXLSX(isRepX){ const d = sheetData(isRepX), X = v => String(v ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'');
+  const col = i => { let s = ''; i++; while(i){ const m = (i-1)%26; s = String.fromCharCode(65+m) + s; i = Math.floor((i-1)/26); } return s; };
+  const cell = (v, r, c, st) => v === '' || v == null ? '' : (typeof v === 'number' && isFinite(v)) ? `<c r="${col(c)}${r}" s="${st===3?3:(c===4?0:2)}"><v>${v}</v></c>` : `<c r="${col(c)}${r}" t="inlineStr"${st?` s="${st}"`:''}><is><t xml:space="preserve">${X(v)}</t></is></c>`;
+  const all = [d.head, ...d.rows, d.total, ...d.extra, [], ...d.notes.map(x => [x])], boldFrom = d.rows.length + 1, boldTo = boldFrom + d.extra.length;
+  const xmlRows = all.map((r, i) => `<row r="${i+1}">${r.map((v, c) => cell(v, i+1, c, i===0 ? 1 : (i>=boldFrom && i<=boldTo) ? 3 : 0)).join('')}</row>`).join('');
+  const widths = isRepX ? [8,36,14,14,6,11,14,14,13,13,15,15,13,13,12,40,24] : [8,38,16,14,6,12,16,18,20,20];
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${xmlRows}</sheetData></worksheet>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFD9C2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const files = {
+    '[Content_Types].xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
+    '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${isRepX?'Rep report':'Inventory'}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+    'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+    'xl/worksheets/sheet1.xml': sheet, 'xl/styles.xml': styles };
+  const z = LL.exportLL.zip(Object.entries(files).map(([name, t]) => ({name, data: enc8.encode(t)})));
+  return new Blob([z], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); }
+function summaryText(isRepX, maxItems){ const rep = B().report, st = sellerTotals(rep.items), L = [];
+  if(!isRepX){ L.push(`My inventory summary from Just Ask Miggy × LocalLiquidators.com${B().job?` (${B().job})`:''}: ${rep.items.length} item${rep.items.length===1?'':'s'}.`,
+      `Est. value NEW: ${st.nw>0?'~'+money(st.nw):'Miggy will confirm'}`, `Est. value USED: ${st.used[1]>0?rng(st.used[0],st.used[1]):'Miggy will confirm'}`, '');
+    rep.items.slice(0, maxItems||200).forEach((i, k) => { const u = usedOf(i); L.push(`${k+1}. ${i.qty>1?i.qty+'x ':''}${i.name}${(i.brand||i.model)?' ('+[i.brand,i.model].filter(Boolean).join(' ')+')':''} · ${i.condition==='Unknown'?'condition TBD':i.condition} · New ${i.newRetail>0?'~'+money(i.newRetail*i.qty):'TBD'} · Used ${u[1]>0?rng(u[0]*i.qty,u[1]*i.qty):'TBD'}`); });
+    if(maxItems && rep.items.length > maxItems) L.push(`…and ${rep.items.length-maxItems} more.`);
+    L.push('', 'Photo-based estimates, not an appraisal. Miggy will be in touch within 24 hours.', `Questions? Text Miggy ${MIGGY.phone}`); return L.join('\n'); }
+  const t = totals(rep.items), cm = commOf(rep.items), c = B().contact || {}, d = dealScore(rep.items, c);
+  L.push(`REP REPORT (internal, includes commission): ${rep.job || B().job || c.business || 'Walkthrough'}`, `Deal score ${d.score}/10: ${d.reason}`);
+  if(c.name) L.push(`Seller: ${[c.name, c.business, c.phone, c.email, c.city].filter(Boolean).join(' · ')}`);
+  if(c.leaseEnd || c.landlord) L.push(`Lease end: ${c.leaseEnd||'—'} · Landlord: ${c.landlord||'—'}${c.landlordContact?' ('+c.landlordContact+')':''}`);
+  L.push(`Totals: New ~${money(st.nw)} · Used ${rng(st.used[0],st.used[1])} · FB ${rng(t.fb[0],t.fb[1])} · Auction ${rng(t.auc[0],t.auc[1])}`,
+    `Commission ${cm.rate}%: ${rng(cm.comm[0],cm.comm[1])} · Net to seller ${rng(cm.net[0],cm.net[1])}`, '');
+  rep.items.slice(0, maxItems||300).forEach((i, k) => L.push(`${k+1}. ${i.qty>1?i.qty+'x ':''}${i.name}${(i.brand||i.model)?' ('+[i.brand,i.model].filter(Boolean).join(' ')+')':''} · ${i.condition} · New ${i.newRetail>0?'~'+money(i.newRetail*i.qty):'—'} · FB ${rng(i.fb[0]*i.qty,i.fb[1]*i.qty)} · Auction ${rng(i.auc[0]*i.qty,i.auc[1]*i.qty)}${resLabel(i)?' · '+resLabel(i):''}`));
+  if(maxItems && rep.items.length > maxItems) L.push(`…and ${rep.items.length-maxItems} more.`);
+  if(c.notes) L.push('', 'Seller notes: ' + c.notes);
+  return L.join('\n'); }
+/* PDF: pages drawn on canvas, embedded as JPEG pages (no library). opts: {rep, comm, q} */
+async function reportPDF(opts){ opts = opts || {}; const R = !!opts.rep, rep = B().report, items = rep.items, st = sellerTotals(items), t = totals(items), c = B().contact || {}, W = 1224, H = 1584, M = 72;
+  const pages = []; let cv, x, y;
+  const loadImg = u => new Promise(res => { if(!u) return res(null); const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = u; });
+  const logo = await loadImg('assets/logo.jpg');
+  const font = (sz, w) => { x.font = `${w||400} ${sz}px Barlow, Arial, sans-serif`; };
+  const wrap = (tx, maxW) => { const out = []; let line = ''; String(tx).split(/\s+/).forEach(w => { const tt = line ? line + ' ' + w : w; if(x.measureText(tt).width > maxW && line){ out.push(line); line = w; } else line = tt; }); if(line) out.push(line); return out; };
+  const newPage = () => { cv = document.createElement('canvas'); cv.width = W; cv.height = H; x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0,0,W,H);
+    x.fillStyle = R ? '#1f2937' : '#091747'; x.fillRect(0,0,W,110); if(logo){ const lh = Math.min(46, 216*logo.naturalHeight/logo.naturalWidth); x.fillStyle='#fff'; x.fillRect(M-8,26,232,58); x.drawImage(logo, M, 55-lh/2, 216, lh); }
+    font(28, 800); x.fillStyle = '#fff'; x.textAlign = 'right'; x.fillText(R ? 'REP REPORT · internal' : 'Just Ask Miggy × LocalLiquidators.com', W-M, 66); x.textAlign = 'left';
+    font(20, 600); x.fillStyle = '#6b7280'; x.fillText(R ? `Just Ask Miggy × LocalLiquidators.com · ${opts.comm ? 'Contains commission: do not send to seller' : 'Internal: not for the seller'} · Page ${pages.length+1}` : `Questions? Text Miggy ${MIGGY.phone}  ·  Page ${pages.length+1}`, M, H-40); y = 160; pages.push(cv); };
+  const need = h => { if(y + h > H - 90) newPage(); };
+  const text = (tx, sz, w, color, gap) => { font(sz, w); x.fillStyle = color || '#111827'; wrap(tx, W-2*M).forEach(l => { need(sz*1.3); x.fillText(l, M, y + sz); y += sz*1.3; }); y += gap||0; };
+  const boxes = (list, h) => { need(h + 20); const n = list.length, gap = 14, bw = (W-2*M-gap*(n-1))/n; list.forEach((b, k) => { const bx = M + k*(bw+gap);
+      x.fillStyle = b[2] || '#fff1e8'; x.fillRect(bx, y, bw, h); font(n>3?16:20, 800); x.fillStyle = '#9a3412'; x.fillText(b[0].toUpperCase(), bx+16, y+32); font(n>3?28:40, 800); x.fillStyle = '#091747';
+      wrap(b[1], bw-28).slice(0,2).forEach((l, j) => x.fillText(l, bx+16, y + (n>3?66:88) + j*32)); }); y += h + 20; };
+  newPage();
+  const when = new Date(rep.at||Date.now()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  if(R){ const d = dealScore(items, c);
+    text(`${c.business || rep.job || B().job || 'Walkthrough'}`, 40, 800, '#091747', 2);
+    text(`${when} · ${items.length} item${items.length===1?'':'s'} · ${rep.photos||B().photos.length} photos · ${rep.source==='ai'?'AI estimate':rep.source==='demo'?'EXAMPLE ONLY':'AI could not value: price by hand'}`, 22, 600, '#4b5563', 14);
+    need(130); x.fillStyle = d.score >= 8 ? '#dcfce7' : d.score >= 5 ? '#fef9c3' : '#fee2e2'; x.fillRect(M, y, W-2*M, 116); font(56, 800); x.fillStyle = '#111827'; x.fillText(`Deal score ${d.score}/10`, M+20, y+64);
+    font(20, 400); x.fillStyle = '#374151'; wrap(d.reason, W-2*M-40).slice(0,2).forEach((l, j) => x.fillText(l, M+20, y+94+j*24)); y += 140;
+    text('Seller', 28, 800, '#091747', 2);
+    [[`Name: ${c.name||'—'}${c.business?' · '+c.business:''}`], [`Phone: ${c.phone||'—'} · Email: ${c.email||'—'}`], [`Location: ${c.city||'—'} · Situation: ${c.situation||'—'} · Timeline: ${c.timeline||'—'}`],
+     [`Lease ending / move-out: ${c.leaseEnd ? new Date(c.leaseEnd+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + (d.days!==null?` (${d.days<0?-d.days+' days ago':'in '+d.days+' days'})`:'') : '—'} · Landlord involved: ${c.landlord||'—'}${c.landlordContact?' ('+c.landlordContact+')':''}`],
+     c.notes ? [`Notes: ${c.notes}`] : null].filter(Boolean).forEach(l => text(l[0], 22, 400, '#111827', 2)); y += 14;
+    boxes([['Est. NEW', st.nw>0?'~'+money(st.nw):'—'], ['Est. USED', rng(st.used[0],st.used[1])], ['FB Marketplace', rng(t.fb[0],t.fb[1])], ['Auction', rng(t.auc[0],t.auc[1])]], 120);
+    if(opts.comm){ const cm = commOf(items); boxes([[`Our commission (${cm.rate}%)`, rng(cm.comm[0],cm.comm[1]), '#e0e7ff'], ['Net to seller', rng(cm.net[0],cm.net[1]), '#e0e7ff']], 110); }
+    const rs = items.reduce((a,i)=>a+reserveOf(i),0); if(rs) text(`Reserves set on ${items.filter(i=>reserveOf(i)>0).length} item(s): ${money(rs)} total`, 20, 600, '#4b5563', 6);
+    text('Estimates from photos only (AI), not an appraisal. Confirm models, counts, condition and ownership (leases/liens) on site.', 18, 400, '#6b7280', 14);
+  } else {
+    text('Thank you! Miggy will be in touch within 24 hours.', 40, 800, '#091747', 6);
+    text(`Inventory summary${B().job?' · '+B().job:''} · ${when} · ${items.length} item${items.length===1?'':'s'}`, 22, 600, '#4b5563', 18);
+    boxes([['Est. value NEW', st.nw>0?'~'+money(st.nw):'Miggy will confirm'], ['Est. value USED', st.used[1]>0?rng(st.used[0],st.used[1]):'Miggy will confirm']], 110);
+    text('NEW = about what it would cost to replace. USED = what we valued it at for auction. Photo-based estimates, not an appraisal or a guarantee.', 19, 400, '#4b5563', 16);
+  }
+  text('Inventory list', 30, 800, '#091747', 6);
+  for(const i of items){ const fl = R && (i.flags||[]).length ? (i.flags||[]).join('; ') : '', rowH = R ? (fl ? 168 : 140) : 132; need(rowH); const im = await loadImg(thumbOf(i)), TS = R ? 128 : 112;
+    x.fillStyle = '#f3f4f6'; x.fillRect(M, y, TS, TS); if(im){ const s2 = Math.max(TS/im.naturalWidth, TS/im.naturalHeight), w2 = im.naturalWidth*s2, h2 = im.naturalHeight*s2; x.save(); x.beginPath(); x.rect(M, y, TS, TS); x.clip(); x.drawImage(im, M+(TS-w2)/2, y+(TS-h2)/2, w2, h2); x.restore(); }
+    const u = usedOf(i), tx = M + TS + 20, q = i.qty; font(26, 800); x.fillStyle = '#111827'; x.fillText(wrap(`${i.itemNo?'#'+i.itemNo+' ':''}${i.name}${q>1?' ×'+q:''}`, R ? W-2*M-TS-20 : 600)[0], tx, y+30);
+    font(20, 400); x.fillStyle = '#4b5563'; x.fillText(wrap([[i.brand,i.model].filter(Boolean).join(' '), i.condition==='Unknown'?(R?'Condition unknown':'Condition: Miggy will confirm'):i.condition, R?resLabel(i):''].filter(Boolean).join(' · '), R ? W-2*M-TS-20 : 600)[0] || '', tx, y+60);
+    if(R){ const cols = [['NEW', i.newRetail>0?'~'+money(i.newRetail*q):'—'], ['USED', u[1]>0?rng(u[0]*q,u[1]*q):'—'], ['FB MARKET', rng(i.fb[0]*q,i.fb[1]*q)], ['AUCTION', rng(i.auc[0]*q,i.auc[1]*q)]], cw = (W-2*M-TS-20)/4;
+      cols.forEach((cc, k) => { font(16, 800); x.fillStyle = '#6b7280'; x.fillText(cc[0], tx + k*cw, y+92); font(22, 800); x.fillStyle = '#091747'; x.fillText(cc[1], tx + k*cw, y+120); });
+      if(fl){ font(17, 400); x.fillStyle = '#b45309'; x.fillText(wrap('Check: ' + fl, W-2*M-TS-20)[0], tx, y+150); } }
+    else { font(18, 800); x.fillStyle = '#6b7280'; x.textAlign = 'right'; x.fillText('NEW', W-M-230, y+30); x.fillText('USED', W-M, y+30); font(24, 800); x.fillStyle = '#091747';
+      x.fillText(i.newRetail>0?'~'+money(i.newRetail*q):'TBD', W-M-230, y+64); x.fillText(u[1]>0?rng(u[0]*q,u[1]*q):'TBD', W-M, y+64); x.textAlign = 'left'; }
+    x.strokeStyle = '#e5e7eb'; x.lineWidth = 2; x.beginPath(); x.moveTo(M, y+rowH-8); x.lineTo(W-M, y+rowH-8); x.stroke(); y += rowH; }
+  y += 14;
+  if(!R){ const section = (title, list, numbered) => { need(80); text(title, 30, 800, '#091747', 4); list.forEach((tt, k) => { need(70); text(`${numbered?(k+1)+'. ':'✓ '}${tt[0]}`, 22, 800, '#111827', 0); text(tt[1], 20, 400, '#4b5563', 10); }); y += 10; };
+    section('How to get the most from your auction (hassle free)', TIPS, true); section('Why auction instead of a buyout or Facebook Marketplace', WHY); section('Why Just Ask Miggy + LocalLiquidators.com', WHYUS); }
+  // assemble PDF: one JPEG image per page
+  const parts = [], offs = []; let len = 0; const push = d => { const u = typeof d === 'string' ? enc8.encode(d) : d; parts.push(u); len += u.length; };
+  const jpgs = pages.map(pg => { const bin = atob(pg.toDataURL('image/jpeg', opts.q || .85).split(',')[1]), u = new Uint8Array(bin.length); for(let k=0;k<bin.length;k++) u[k] = bin.charCodeAt(k); return u; });
+  const N = pages.length, obj = (n, body) => { offs[n] = len; push(`${n} 0 obj\n`); body(); push('\nendobj\n'); };
+  push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+  obj(1, () => push('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2, () => push(`<< /Type /Pages /Count ${N} /Kids [${pages.map((_, k) => `${3+k*3} 0 R`).join(' ')}] >>`));
+  pages.forEach((_, k) => { const pn = 3+k*3, im = pn+1, cs = pn+2, content = `q 612 0 0 792 0 0 cm /Im0 Do Q`;
+    obj(pn, () => push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 ${im} 0 R >> >> /Contents ${cs} 0 R >>`));
+    obj(im, () => { push(`<< /Type /XObject /Subtype /Image /Width ${W} /Height ${H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpgs[k].length} >>\nstream\n`); push(jpgs[k]); push('\nendstream'); });
+    obj(cs, () => push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`)); });
+  const total = 3 + N*3, xref = len; push(`xref\n0 ${total}\n0000000000 65535 f \n`); for(let k=1;k<total;k++) push(String(offs[k]).padStart(10,'0') + ' 00000 n \n');
+  push(`trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  return new Blob(parts, {type:'application/pdf'}); }
+const dl = (name, blob) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); };
+/* data-r="1" on a button = rep version (only honored in rep mode). Seller buttons never carry it. */
+const wantRep = el => !!(el && el.dataset.r === '1' && isRep());
+LL.acts.slshare = async btn => { if(!B().report) return; const R = wantRep(btn), old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Getting the report ready…';
+  try{ const pdf = new File([await reportPDF({rep:R, comm:R})], fileBase(R) + '.pdf', {type:'application/pdf'}); const text = summaryText(R, 12);
+    const d = {files:[pdf], title: R ? 'Rep report' : 'My inventory summary · Just Ask Miggy', text};
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[pdf]})){ await navigator.share(d).catch(e => { if(e.name!=='AbortError') throw e; }); }
+    else if(navigator.share){ dl(pdf.name, pdf); await navigator.share({title:d.title, text}).catch(e => { if(e.name!=='AbortError') throw e; }); }
+    else { dl(pdf.name, pdf); LL.toast('PDF saved. Use Email or Text to send it.'); } }
+  catch(e){ LL.toast('Sharing didn’t work here. Try Email or Text.'); }
+  finally{ btn.disabled = false; btn.innerHTML = old; } };
+LL.acts.slmail = a => { const R = wantRep(a); a.href = `mailto:?subject=${encodeURIComponent(R ? `Rep report: ${(B().contact||{}).business || B().job || 'walkthrough'}` : 'My inventory summary · Just Ask Miggy × LocalLiquidators.com')}&body=${encodeURIComponent(summaryText(R, 60) + '\n\n(Tip: tap Save PDF or Excel in the app to attach the full report.)')}`; location.href = a.href; };
+LL.acts.slsms = a => { const R = wantRep(a); a.href = `sms:?&body=${encodeURIComponent(summaryText(R, 8))}`; location.href = a.href; };
+LL.acts.slxlsx = b => { const R = wantRep(b); dl(fileBase(R) + '.xlsx', toXLSX(R)); LL.toast('Excel file downloaded'); };
+LL.acts.slcsv = b => { const R = wantRep(b); dl(fileBase(R) + '.csv', new Blob([toCSV(R)], {type:'text/csv'})); LL.toast('CSV downloaded'); };
+LL.acts.slpdf = async btn => { const R = wantRep(btn), old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> PDF…'; try{ dl(fileBase(R) + '.pdf', await reportPDF({rep:R, comm:R})); LL.toast('PDF downloaded'); }catch(e){ window.print(); } finally{ btn.disabled = false; btn.innerHTML = old; } };
+const shareBlock = R => `<div class="pad noprint sl-share"><button class="btn accent block bk-big" data-act="slshare"${R?' data-r="1"':''}>${I.share} ${R?'Share rep report':'Share my report'}</button>
+    <p class="hint center" style="margin:6px 0 10px">${R?'Rep version: includes FB, auction, reserves, deal score and commission.':'Send the PDF to yourself, a partner or your landlord.'}</p>
+    <div class="sl-more"><a class="btn ghost sm" href="#" data-act="slmail"${R?' data-r="1"':''}>${I.mail} Email</a><a class="btn ghost sm" href="#" data-act="slsms"${R?' data-r="1"':''}>${I.phone} Text</a>
+     <button class="btn ghost sm" data-act="slxlsx"${R?' data-r="1"':''}>${I.download} Excel (.xlsx)</button><button class="btn ghost sm" data-act="slcsv"${R?' data-r="1"':''}>${I.download} CSV (Google Sheets)</button>
+     <button class="btn ghost sm" data-act="slpdf"${R?' data-r="1"':''}>${I.download} ${R?'Rep PDF':'Save as PDF'}</button></div>
+    <p class="small muted center" style="margin-top:6px">Open in Google Sheets: upload the CSV or XLSX at sheets.google.com.</p></div>`;
+LL.reports = { toCSV, toXLSX, reportPDF, summaryText, dealScore, commOf };
+
+/* REP unlock: open #/rep/<code> once on Michael's phone. Only a SHA-256 of the code ships in this file. */
+const REP_HASH = '0940d20821c97b12cbb72b207777ea3e4be97ff83ca587d270b177d473b71e8d';
+LL.views.rep = r => ({html:`<div class="pad"><p class="muted">One moment…</p></div>`, mount(el){ (async () => {
+  if(r.code==='off'){ try{ localStorage.removeItem('ll.rep'); }catch(e){} LL.toast('Rep mode off on this phone'); LL.go('#/sell/bulk', true); return; }
+  if(r.code==='lead') return openLead(el, r.arg);
+  let ok = false; try{ const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(r.code||'').trim().toLowerCase())); ok = [...new Uint8Array(h)].map(x => x.toString(16).padStart(2,'0')).join('') === REP_HASH; }catch(e){}
+  if(ok){ try{ localStorage.setItem('ll.rep','1'); }catch(e){} LL.toast('Rep mode on for this phone'); }
+  let pend = ''; try{ pend = sessionStorage.getItem('ll.pendingLead') || ''; sessionStorage.removeItem('ll.pendingLead'); }catch(e){}
+  LL.go(ok && pend ? '#/rep/lead/' + pend : '#/sell/bulk', true); })(); } });
+/* #/rep/lead/<key>.<token> (link in Michael's lead alert): load a seller's saved report into rep mode on this phone,
+   so reserves + commission can be set after the fact and the rep PDF / Excel / CSV re-exported. */
+async function openLead(el, arg){ const m = /^([a-f0-9]{16})\.([a-f0-9]{32})$/.exec(arg||''); const say = h => { el.innerHTML = `<div class="pad">${h}</div>`; };
+  if(!m) return say('<p>That report link looks incomplete.</p>');
+  if(!isRep()){ try{ sessionStorage.setItem('ll.pendingLead', arg); }catch(e){} return say('<h2>Rep mode needed</h2><p class="muted">Turn on rep mode on this phone with your rep link, then open this report link again.</p>'); }
+  const b = B(); if(b.report && b.report.remote && b.report.remote.id===m[1]){ LL.go('#/sell/bulk/report', true); return; }
+  if((b.photos.length || b.report) && !confirm('Replace the walkthrough on this phone with this seller’s report? (Send or export the current one first if you still need it.)')){ LL.go('#/sell/bulk', true); return; }
+  say('<p class="muted"><span class="spin"></span> Loading the seller’s report…</p>');
+  let j = null; try{ const res = await fetch(`${LEAD_URL}?id=${m[1]}&k=${m[2]}`); j = await res.json(); if(!res.ok || !j.ok) throw new Error(j && j.error || res.status); }
+  catch(e){ return say(`<p>Couldn’t load that report (${esc(String(e.message||e))}). Check your signal and tap the link again.</p>`); }
+  await ready; await store.clear(); b.photos = []; b.items = []; b.seq = 0; b.itemSeq = 0;
+  for(const p of j.photos||[]){ const n = +((/^P(\d+)$/.exec(p.label)||[])[1]) || (b.seq + 1); const id = 'r' + Date.now().toString(36) + LL.uid().slice(0,4);
+    await store.put(id, {full: p.dataUrl, thumb: p.dataUrl}); b.photos.push({id, n, area: 'Kitchen', ts: Date.now(), remote: true}); b.seq = Math.max(b.seq, n); }
+  const items = (j.items||[]).map(x => { const o = norm(Object.assign({confidence:'medium'}, x)); if(x.itemNo) o.itemNo = x.itemNo; if(x.newRetail === 0) o.newRetail = null; return o; });
+  b.job = j.job || (j.contact||{}).business || ''; b.contact = j.contact || {}; b.mode = j.mode || 'items';
+  b.report = { source: j.aiSource || 'ai', at: Date.parse(j.createdAt) || Date.now(), job: b.job, photos: j.photoCount || b.photos.length, mode: b.mode, items, notes: '',
+    lead: { id: j.id, at: Date.parse(j.createdAt) || Date.now(), notified: 'sent' }, remote: { id: m[1] } };
+  LL.save(); LL.toast('Seller report loaded: set reserves + commission, then export'); LL.go('#/sell/bulk/report', true); }
+
 /* ---------- report ---------- */
 function totals(items){ const t = {fb:[0,0], auc:[0,0], n:0, units:0};
   items.forEach(i => { t.fb[0]+=i.fb[0]*i.qty; t.fb[1]+=i.fb[1]*i.qty; t.auc[0]+=i.auc[0]*i.qty; t.auc[1]+=i.auc[1]*i.qty; t.n++; t.units+=i.qty; }); return t; }
-const RATES = [35, 30, 25];
 const areasOf = items => { const seen = AREAS.filter(a => items.some(i => i.area===a)); items.forEach(i => { if(!seen.includes(i.area)) seen.push(i.area); }); return seen; };
 let editing = null;
 function itemCard(it, rep){ const tag = it.qty>1 ? `<span class="bk-q">×${it.qty}</span>` : '';
@@ -402,49 +742,69 @@ function itemCard(it, rep){ const tag = it.qty>1 ? `<span class="bk-q">×${it.qt
     <div class="lbl">Value each ($)</div>
     <div class="row"><label class="field"><span>FB low</span><input type="number" inputmode="numeric" name="fb0" value="${it.fb[0]||''}" placeholder="Enter price"></label><label class="field"><span>FB high</span><input type="number" inputmode="numeric" name="fb1" value="${it.fb[1]||''}" placeholder="Enter price"></label></div>
     <div class="row"><label class="field"><span>Auction low</span><input type="number" inputmode="numeric" name="auc0" value="${it.auc[0]||''}" placeholder="Enter price"></label><label class="field"><span>Auction high</span><input type="number" inputmode="numeric" name="auc1" value="${it.auc[1]||''}" placeholder="Enter price"></label></div>
+    <div class="row"><label class="field"><span>New retail each ($)</span><input type="number" inputmode="numeric" name="nr" value="${it.newRetail||''}" placeholder="Replacement cost"></label><label class="field"><span>Reserve (rep only)</span><select name="resmode">${RES_OPTS.map(o => `<option value="${o[0]}" ${o[0]===resMode(it)?'selected':''}>${o[1]}</option>`).join('')}</select></label></div>
+    <label class="field bk-rescustom"${resMode(it)==='custom'?'':' hidden'}><span>Custom reserve ($)</span><input type="number" inputmode="numeric" name="reserve" value="${resMode(it)==='custom'&&it.reserve||''}" placeholder="Amount for this line"></label>
     <div class="row"><button type="button" class="btn danger sm" data-act="bkdel" data-id="${it.id}">${I.trash} Delete</button><button type="submit" class="btn sm">${I.check} Save</button></div></form></div>`;
   return `<div class="card bk-item${unpriced(it)?' noprice':''}" data-id="${it.id}"><div class="bk-ih"><div class="bk-it"><b>${it.itemNo?`<span class="bk-ino">#${it.itemNo}</span> `:''}${esc(it.name)} ${tag}</b>${(it.brand||it.model)?`<small>${esc([it.brand,it.model].filter(Boolean).join(' '))}</small>`:''}</div>
     <button class="iconbtn sm noprint" data-act="bkedit" data-id="${it.id}" aria-label="Edit ${esc(it.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
    <div class="bk-meta"><span class="bk-chip">${esc(it.condition)}</span><span class="bk-chip conf-${it.confidence}">${it.confidence} confidence</span>${it.photos.length?`<span class="bk-chip ph">${I.image.replace('<svg','<svg width="13" height="13"')} ${it.photos.join(', ')}</span>`:''}</div>
-   <div class="bk-vals"><div><small>FB Market</small><b>${vr(it, it.fb[0]*it.qty, it.fb[1]*it.qty)}</b></div><div><small>Auction</small><b>${vr(it, it.auc[0]*it.qty, it.auc[1]*it.qty)}</b></div><div><small>New${it.qty>1?' (each)':''}</small><b>${it.newRetail?'~'+money(it.newRetail):'—'}</b></div></div>
+   <div class="bk-vals four"><div><small>New${it.qty>1?' (total)':''}</small><b>${it.newRetail?'~'+money(it.newRetail*it.qty):'—'}</b></div><div><small>Used</small><b>${vr(it, usedOf(it)[0]*it.qty, usedOf(it)[1]*it.qty)}</b></div><div><small>FB Market</small><b>${vr(it, it.fb[0]*it.qty, it.fb[1]*it.qty)}</b></div><div><small>Auction</small><b>${vr(it, it.auc[0]*it.qty, it.auc[1]*it.qty)}</b></div></div>
+   <p class="bk-res">${resLabel(it) ? `<b>${esc(resLabel(it))}</b>` : 'No reserve'}</p>
    ${unpriced(it)?`<p class="bk-need">No value from the photos. Tap the pencil and enter a price.</p>`:''}
    ${it.qty>1&&!unpriced(it)?`<p class="bk-each">Each: FB ${rng(it.fb[0],it.fb[1])} · Auction ${rng(it.auc[0],it.auc[1])}</p>`:''}
    ${it.basis?`<p class="bk-basis">${esc(it.basis)}</p>`:''}
    ${it.flags.length?`<ul class="bk-flags">${it.flags.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}</div>`; }
 LL.views.bulkreport = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#/sell/bulk', true); return {html:''}; }
+  if(!isRep()){ LL.go(rep.lead ? '#/sell/bulk/thanks' : '#/sell/bulk/contact', true); return {html:''}; }
   const t = totals(rep.items), demo = rep.source==='demo', d = new Date(rep.at);
   const banner = demo ? `<div class="bk-demo" role="note"><b>Example only</b> ${rep.why==='offline'?'You were offline, so this is an example bakery report, not read from your photos. Re-run Analyze with signal.':'Speedy AI couldn’t be reached, so this is an example bakery report, not read from your photos. Tap Analyze again.'} Or tap <b>Send to my assistant</b>.</div>`
     : `<div class="bk-ai" role="note"><b>AI estimate</b> from your ${rep.photos} photos. Photo-based, not an appraisal. Check the flagged items on site.</div>`;
-  const comm = b.showComm ? `<div class="card pad bk-comm"><div class="lbl">LL commission on auction total</div>${RATES.map(r=>`<div class="bk-trow"><span>${r}%</span><b>${rng(t.auc[0]*r/100, t.auc[1]*r/100)}</b></div>`).join('')}</div>` : '';
+  const cm = commOf(rep.items), st = sellerTotals(rep.items), c = b.contact || {}, deal = dealScore(rep.items, c);
+  const comm = `<div class="card pad bk-comm"><div class="bk-commh"><div class="lbl">Commission (rep only)</div><label class="bk-rate"><span class="sr-only">Commission rate</span><select id="bk-rate" aria-label="Commission rate">${RATE_OPTS.map(r => `<option value="${r}" ${r===cm.rate?'selected':''}>${r}%</option>`).join('')}</select></label></div>
+    <div class="bk-trow"><span>Auction total (hammer)</span><b>${rng(cm.gross[0], cm.gross[1])}</b></div>
+    <div class="bk-trow"><span>Our commission (${cm.rate}%)</span><b>${rng(cm.comm[0], cm.comm[1])}</b></div>
+    <div class="bk-trow net"><span>Net to seller</span><b>${rng(cm.net[0], cm.net[1])}</b></div></div>`;
+  const dd = deal.days, dealCard = `<div class="pad"><div class="card pad bk-deal s${deal.score>=8?'hi':deal.score>=5?'mid':'lo'}"><div class="bk-dealn"><b>${deal.score}</b><small>/10</small></div><div><div class="lbl">Deal score</div><p>${esc(deal.reason)}</p></div></div></div>`;
+  const sellerCard = c.name ? `<div class="pad"><div class="card pad bk-seller"><div class="lbl">Seller${rep.lead?` · lead sent ${new Date(rep.lead.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`:''}</div>
+    <p><b>${esc(c.name)}</b>${c.business?` · ${esc(c.business)}`:''}</p>
+    <p>${c.phone?`<a href="tel:${esc(c.phone.replace(/[^\d+]/g,''))}">${esc(c.phone)}</a>`:''}${c.phone&&c.email?' · ':''}${c.email?`<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`:''}</p>
+    <p class="small">${esc(c.city||'—')} · ${esc(c.situation||'—')} · needs to be gone: ${esc(c.timeline||'—')}</p>
+    <p class="small">Lease end: <b>${c.leaseEnd?esc(c.leaseEnd)+(dd!==null?` (${dd<0?-dd+' days ago':'in '+dd+' days'})`:''):'—'}</b> · Landlord involved: <b>${esc(c.landlord||'—')}</b>${c.landlordContact?` (${esc(c.landlordContact)})`:''}</p>
+    ${c.notes?`<p class="small muted">“${esc(c.notes)}”</p>`:''}</div></div>` : '';
   return {html:`<div class="bk-rep">
   <div class="bk-rephead"><img class="bk-plogo" src="assets/logo.jpg" alt="Local Liquidators" width="170" height="40"><div><span class="badge ${demo?'demo':'ok'}">${demo?'Example only':'AI estimate'}</span></div>
    <h2>${esc(rep.job || b.job || 'Walkthrough')}</h2><p>${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} · ${rep.photos} photos · ${t.n} lines · ${t.units} units</p>
-   <div class="bk-sum"><div><small>FB Marketplace</small><b>${rng(t.fb[0],t.fb[1])}</b></div><div><small>Auction</small><b>${rng(t.auc[0],t.auc[1])}</b></div></div></div>
+   <div class="bk-sum four"><div><small>New</small><b>${st.nw>0?'~'+money(st.nw):'—'}</b></div><div><small>Used</small><b>${rng(st.used[0],st.used[1])}</b></div><div><small>FB Marketplace</small><b>${rng(t.fb[0],t.fb[1])}</b></div><div><small>Auction</small><b>${rng(t.auc[0],t.auc[1])}</b></div></div></div>
   ${banner}
+  ${dealCard}
+  ${sellerCard}
   ${rep.items.some(unpriced)?`<div class="bk-needbar" role="status"><b>${rep.items.filter(unpriced).length} ${rep.items.filter(unpriced).length===1?'item needs':'items need'} a price.</b> Enter one before you copy, download or print the report.</div>`:''}
   ${areasOf(rep.items).map(a => { const its = rep.items.filter(i => i.area===a), at = totals(its);
     return `<section class="bk-area"><div class="sec"><h2>${esc(a)}</h2><span class="small muted">${its.length} item${its.length===1?'':'s'} · auction ${rng(at.auc[0],at.auc[1])}</span></div><div class="bk-list">${its.map(i => itemCard(i, rep)).join('')}</div></section>`; }).join('')}
   <div class="pad noprint"><button class="btn ghost block sm" data-act="bkadd">${I.plus} Add an item the AI missed</button></div>
   <div class="pad"><div class="card pad bk-tot"><div class="lbl">Totals</div>
+    <div class="bk-trow"><span>Est. NEW (replacement)</span><b>${st.nw>0?'~'+money(st.nw):'—'}</b></div>
+    <div class="bk-trow"><span>Est. USED (seller sees this)</span><b>${rng(st.used[0],st.used[1])}</b></div>
     <div class="bk-trow"><span>FB Marketplace (used, local)</span><b>${rng(t.fb[0],t.fb[1])}</b></div>
     <div class="bk-trow"><span>Auction (hammer)</span><b>${rng(t.auc[0],t.auc[1])}</b></div></div>
    ${comm}
-   <label class="bk-switch noprint"><span>Show commission (rep only)</span><span class="switch"><input type="checkbox" data-act="bkcomm" ${b.showComm?'checked':''}><i></i></span></label>
    ${rep.notes?`<p class="small muted" style="margin-top:10px">AI note: ${esc(rep.notes)}</p>`:''}
    <p class="small muted bk-disc">${demo?'EXAMPLE ONLY: not read from your photos. ':''}Estimates from photos only, not an appraisal. Confirm models, counts, condition and ownership (leases/liens) on site.</p></div>
-  <div class="pad noprint"><div class="lbl">Export</div><div class="bk-exp">
-    <button class="btn ghost sm" data-act="bkcopy">${I.check} Copy as text</button><button class="btn ghost sm" data-act="bkcsv">${I.download} Download CSV</button>
-    <button class="btn ghost sm" data-act="bkpdf">${I.download} Print / PDF</button><a class="btn ghost sm" href="#/sell/bulk">${I.camera} Back to photos</a></div></div>
+  ${shareBlock(true)}
+  <div class="pad noprint"><div class="bk-exp">
+    <button class="btn ghost sm" data-act="bkcopy">${I.check} Copy as text</button><button class="btn ghost sm" data-act="bkpdf">${I.download} Print</button>
+    ${rep.lead?`<a class="btn ghost sm" href="#/sell/bulk/thanks">${I.eye||I.check} Seller view</a>`:''}<a class="btn ghost sm" href="#/sell/bulk">${I.camera} Back to photos</a></div></div>
   <div style="height:90px"></div>
   <div class="stickyfoot noprint"><button class="btn accent block" data-act="bkshare">${I.share} Send photos + list to my assistant</button></div></div>`,
-  mount(el){ el.querySelectorAll('form.bk-edit').forEach(f => f.addEventListener('submit', e => { e.preventDefault(); const it = rep.items.find(i => i.id===f.dataset.id); const v = n => f.elements[n].value;
-      Object.assign(it, {name: v('name').trim()||it.name, brand: v('brand').trim(), model: v('model').trim(), qty: Math.max(1, Math.round(+v('qty')||1)), area: v('area'), condition: v('condition'), fb:[num(v('fb0')), num(v('fb1'))].sort((a,b)=>a-b), auc:[num(v('auc0')), num(v('auc1'))].sort((a,b)=>a-b), edited:true});
+  mount(el){ el.querySelector('#bk-rate')?.addEventListener('change', e => LL.acts.bkrate(e.target)); el.querySelectorAll('form.bk-edit').forEach(f => f.elements.resmode && f.elements.resmode.addEventListener('change', () => { const box = f.querySelector('.bk-rescustom'); box.hidden = f.elements.resmode.value!=='custom'; if(!box.hidden) f.elements.reserve.focus(); }));
+    el.querySelectorAll('form.bk-edit').forEach(f => f.addEventListener('submit', e => { e.preventDefault(); const it = rep.items.find(i => i.id===f.dataset.id); const v = n => f.elements[n].value;
+      Object.assign(it, {name: v('name').trim()||it.name, brand: v('brand').trim(), model: v('model').trim(), qty: Math.max(1, Math.round(+v('qty')||1)), area: v('area'), condition: v('condition'), fb:[num(v('fb0')), num(v('fb1'))].sort((a,b)=>a-b), auc:[num(v('auc0')), num(v('auc1'))].sort((a,b)=>a-b), newRetail: num(v('nr')) || 0, reserveMode: v('resmode'), reserve: v('resmode')==='custom' ? (num(v('reserve')) || 0) : 0, edited:true});
       editing = null; LL.save(); LL.render(true); LL.toast('Saved'); })); } }; };
 LL.acts.bkedit = b => { editing = b.dataset.id; LL.render(true); setTimeout(() => LL.$('.bk-item.editing')?.scrollIntoView({block:'center'}), 60); };
 LL.acts.bkdel = b => { const rep = B().report, i = rep.items.findIndex(x => x.id===b.dataset.id); if(i<0) return; const [gone] = rep.items.splice(i,1); editing = null; LL.save(); LL.render(true);
   LL.toast('Item removed', 'Undo', () => { rep.items.splice(i, 0, gone); LL.save(); LL.render(true); }); };
 LL.acts.bkadd = () => { const rep = B().report; const it = norm({name:'New item', qty:1, area: B().area || areasOf(rep.items)[0] || 'Kitchen', condition:'Good', confidence:'low', fbLow:0, fbHigh:0, aucLow:0, aucHigh:0, basis:'Added by hand'}); rep.items.push(it); editing = it.id; LL.save(); LL.render(true); setTimeout(() => LL.$('.bk-item.editing')?.scrollIntoView({block:'center'}), 60); };
-LL.acts.bkcomm = c => { B().showComm = c.checked; LL.save(); LL.render(true); };
+LL.acts.bkrate = sel => { if(!isRep()) return; B().commRate = +sel.value; LL.save(); LL.render(true); };
 
 /* exports */
 function asText(withPhotosNote){ const b = B(), rep = b.report; const t = rep ? totals(rep.items) : null; const L = [];
@@ -453,7 +813,7 @@ function asText(withPhotosNote){ const b = B(), rep = b.report; const t = rep ? 
   if(rep){ areasOf(rep.items).forEach(a => { L.push('', a.toUpperCase());
       rep.items.filter(i => i.area===a).forEach(i => L.push(`- ${i.qty>1?i.qty+'x ':''}${i.name}${(i.brand||i.model)?' ('+[i.brand,i.model].filter(Boolean).join(' ')+')':''} | ${i.condition} | ${unpriced(i)?'NEEDS PRICE':`FB ${rng(i.fb[0]*i.qty,i.fb[1]*i.qty)} | Auction ${rng(i.auc[0]*i.qty,i.auc[1]*i.qty)}`}${i.photos.length?' | '+i.photos.join(','):''}${i.flags.length?' | Check: '+i.flags.join('; '):''}`)); });
     L.push('', `TOTAL FB Marketplace ${rng(t.fb[0],t.fb[1])} | Auction ${rng(t.auc[0],t.auc[1])}`);
-    if(b.showComm) L.push('LL commission: ' + RATES.map(r => `${r}% ${rng(t.auc[0]*r/100,t.auc[1]*r/100)}`).join(' | ')); }
+    if(isRep()){ const cm = commOf(rep.items); L.push(`Commission ${cm.rate}%: ${rng(cm.comm[0],cm.comm[1])} | Net to seller ${rng(cm.net[0],cm.net[1])}`); } }
   if(withPhotosNote) L.push('', 'Please research each item (models, used FBMP + auction values) from the attached photos.');
   return L.join('\n'); }
 LL.acts.bkcopy = async () => { if(needPrice(B().report)) return; const s = asText(false); try{ await navigator.clipboard.writeText(s); LL.toast('Copied: paste it anywhere'); }catch(e){ const ta = document.createElement('textarea'); ta.value = s; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); LL.toast('Copied'); } };
@@ -461,10 +821,10 @@ LL.acts.bkcsv = () => { const b = B(), rep = b.report; if(needPrice(rep)) return
   const head = ['Area','Item','Brand','Model','Qty','Condition','Confidence','Photos','New retail (each)','FBMP low (each)','FBMP high (each)','FBMP low (total)','FBMP high (total)','Auction low (each)','Auction high (each)','Auction low (total)','Auction high (total)','Basis','Check on site','Source'];
   const rows = rep.items.map(i => [i.area,i.name,i.brand,i.model,i.qty,i.condition,i.confidence,i.photos.join(' '),i.newRetail??'',i.fb[0],i.fb[1],i.fb[0]*i.qty,i.fb[1]*i.qty,i.auc[0],i.auc[1],i.auc[0]*i.qty,i.auc[1]*i.qty,i.basis,i.flags.join('; '),rep.source==='demo'?'Example only':'AI estimate']);
   const t = totals(rep.items); rows.push(['TOTAL','','','',t.units,'','','','','','',t.fb[0],t.fb[1],'','',t.auc[0],t.auc[1],'','','']);
-  if(b.showComm) RATES.forEach(r => rows.push([`LL commission ${r}%`,'','','','','','','','','','','','','','',Math.round(t.auc[0]*r/100),Math.round(t.auc[1]*r/100),'','','']));
+  if(isRep()){ const cm = commOf(rep.items); rows.push([`Commission ${cm.rate}%`,'','','','','','','','','','','','','','',Math.round(cm.comm[0]),Math.round(cm.comm[1]),'','','']); }
   LL.download(slug(rep.job||b.job) + '-walkthrough.csv', [head].concat(rows).map(r => r.map(q).join(',')).join('\r\n'), 'text/csv'); LL.toast('CSV downloaded'); };
 LL.acts.bkpdf = () => { if(needPrice(B().report)) return; editing = null; LL.render(true); setTimeout(() => window.print(), 250); };
-LL.acts.bkshare = async () => { const b = B(); if(!b.photos.length){ LL.toast('No photos yet'); return; }
+LL.acts.bkshare = async () => { const b = B(); if(!isRep()) return; if(!b.photos.length){ LL.toast('No photos yet'); return; }
   const text = asText(true), name = slug(b.job); const ov = LL.$('#overlay');
   ov.innerHTML = `<div class="bk-sheetwrap" data-x="close"><div class="bk-sheet bk-share" role="dialog" aria-label="Send to my assistant"><h3>Send to my assistant</h3><p class="small muted" id="bk-shmsg">Getting ${b.photos.length} photos ready…</p><div id="bk-shbtns"></div>
     <button class="btn ghost block sm" style="margin-top:10px" data-x="copy">${I.check} Copy the list only</button><button class="btn block sm" style="margin-top:8px" data-x="close">Done</button></div></div>`;

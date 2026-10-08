@@ -12,14 +12,15 @@ function parse(){
   if(!p.length) return {name: S().mode ? (S().mode==='buy'?'buy':'sell') : 'welcome', tab: S().mode==='buy'?'buy':'sell'};
   const [a,b,c,d,e] = p;
   if(a==='welcome') return {name:'welcome'};
-  if(a==='sell'){ if(b==='bulk') return c==='cam'?{name:'bulkcam', tab:'sell', under:'#/sell/bulk'}:c==='item'?{name:'bulkitem', tab:'sell', n:d, slot:e, under:'#/sell/bulk'}:c==='report'?{name:'bulkreport', tab:'sell'}:{name:'bulk', tab:'sell'}; if(b==='item') return {name:'item', tab:'sell', id:c, step:d||'photos'}; if(b==='cam') return {name:'cam', tab:'sell', id:c, shot:d, under:'#/sell/item/'+c+'/photos'};
+  if(a==='rep') return {name:'rep', code:b||'', arg:c||'', tab:'sell'};
+  if(a==='sell'){ if(b==='bulk') return c==='cam'?{name:'bulkcam', tab:'sell', under:'#/sell/bulk'}:c==='item'?{name:'bulkitem', tab:'sell', n:d, slot:e, under:'#/sell/bulk'}:c==='contact'?{name:'bulkcontact', tab:'sell'}:c==='thanks'?{name:'bulkthanks', tab:'sell'}:c==='report'?{name:'bulkreport', tab:'sell'}:{name:'bulk', tab:'sell'}; if(b==='item') return {name:'item', tab:'sell', id:c, step:d||'photos'}; if(b==='cam') return {name:'cam', tab:'sell', id:c, shot:d, under:'#/sell/item/'+c+'/photos'};
     if(b==='submit') return {name:'submit', tab:'sell'}; if(b==='export') return {name:'export', tab:'sell'}; if(b==='protocol') return {name:'protocol', tab:'sell'}; if(b==='stickers') return {name:'stickers', tab:'sell', sub:c, arg:d}; if(b==='done') return {name:'done', tab:'sell'}; if(b==='onboard') return {name:'onboard', tab:'sell'}; return {name:'sell', tab:'sell'}; }
   if(a==='buy'){ if(b==='reels') return {name:'reels', tab:'buy', scope:c||'all', lotId:d, under:'#/buy'}; return {name:'buy', tab:'buy'}; }
   if(a==='alerts') return {name:'alerts', tab:'alerts', sub:b, arg:c};
   if(a==='profile') return {name:'profile', tab:'profile'};
   return {name:'sell', tab:'sell'};
 }
-const TITLES = {welcome:'Welcome',sell:'Sell',onboard:'Your closing',item:'Item',cam:'Camera',submit:'Submit',done:'Submitted',export:'Export for Local Liquidators',protocol:'Inventory Protocol',bulk:'Bulk walkthrough',bulkcam:'Walkthrough camera',bulkitem:'Item camera',bulkreport:'Walkthrough report',stickers:'Lot stickers',buy:'Buy',reels:'Lots',alerts:'Alerts',profile:'Profile'};
+const TITLES = {welcome:'Welcome',sell:'Sell',onboard:'Your closing',item:'Item',cam:'Camera',submit:'Submit',done:'Submitted',export:'Export for Local Liquidators',protocol:'Inventory Protocol',bulk:'Bulk walkthrough',bulkcam:'Walkthrough camera',bulkitem:'Item camera',bulkcontact:'Send to Miggy',bulkthanks:'Thank you',rep:'Rep',bulkreport:'Walkthrough report',stickers:'Lot stickers',buy:'Buy',reels:'Lots',alerts:'Alerts',profile:'Profile'};
 let lastUnder = '';
 LL.render = function(keep){
   LL.cleanup.splice(0).forEach(f=>{ try{f();}catch(e){} });
