@@ -28,7 +28,7 @@ LL.render = function(keep){
   document.title = (TITLES[r.name]||'') + (buySide ? ' · Speedy Buy AI' : ' · Speedy List AI');
   LL.setHeaderBrand(buySide);
   const welcome = r.name==='welcome';
-  LL.$('.topbar').hidden = LL.$('.protostrip').hidden = LL.$('.tabbar').hidden = welcome;
+  LL.$('.topbar').hidden = LL.$('.tabbar').hidden = welcome;
   LL.$$('.tab').forEach(t=>t.removeAttribute('aria-current')); if(r.tab) LL.$(`.tab[data-tab=${r.tab}]`)?.setAttribute('aria-current','page');
   LL.$('#themebtn').innerHTML = document.documentElement.dataset.theme==='dark' ? I.sun : I.moon;
   const out = fn(r) || {html:''};
