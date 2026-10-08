@@ -724,3 +724,52 @@ code{font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:
 .bk-item.noprice{border-color:#f97316;box-shadow:0 0 0 2px rgba(249,115,22,.18)}
 .bk-need{margin-top:6px;font-size:13px;font-weight:700;color:#c2410c}
 .bk-needbar{margin:10px 16px 0;padding:10px 12px;border-radius:10px;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.45);font-size:14px}
+/* 4–7 photo rule counter (single items, group-lot pieces, bulk item-by-item) */
+.prule{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.prule b{font-family:var(--head);font-size:18px;font-weight:800;margin-right:2px}
+.prule b.okt{color:var(--ok)}
+.rflag{font-size:12px;font-weight:700;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--text-2)}
+.rflag.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.rflag.need{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.prulecard{margin-bottom:12px}
+.prulerow{margin:4px 0 8px}
+.prulerow .prule b{font-size:15px}
+.part .ptiles{grid-template-columns:repeat(4,1fr)}
+/* bulk · item by item (4–7 photos per item) */
+.bk-modeseg{padding-top:8px;padding-bottom:0}
+.bk-modeseg .seg button{min-height:44px;font-size:15px}
+.bk-modeseg .seg button[aria-pressed=true]{background:var(--accent);color:var(--navy-d)}
+.bk-items{display:grid;gap:12px}
+.bk-icard{margin:0}
+.bk-icard.ok{border-color:var(--ok)}
+.bk-ich{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.bk-ich b{font-family:var(--head);font-size:21px;font-weight:800}
+.bk-ich .small{flex:1}
+.bk-irule{margin-bottom:8px}
+.bk-slots{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.bk-slot{display:flex;flex-direction:column;gap:3px;padding:0;border:0;background:none;color:var(--text);text-align:left;min-width:0;font:inherit;cursor:pointer}
+.bk-slot .th{position:relative;display:grid;place-items:center;aspect-ratio:1;border-radius:12px;border:2px dashed var(--line);background:var(--surface-2);overflow:hidden;color:var(--text-2)}
+.bk-slot .th svg{width:24px;height:24px}
+.bk-slot .th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.bk-slot.req .th{border-color:var(--accent)}
+.bk-slot.key .th{border-color:var(--warn)}
+.bk-slot.done .th{border:2px solid var(--ok)}
+.bk-slot.skip .th{opacity:.55;border-style:solid}
+.bk-slot .nm{font-size:12px;font-weight:700;line-height:1.15;display:flex;gap:4px}
+.bk-slot .nm i{font-style:normal;color:var(--text-2)}
+.bk-slot em{font-style:normal;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--text-2)}
+.bk-slot.req em{color:var(--accent)}.bk-slot.key em{color:var(--warn)}.bk-slot.done em{color:var(--ok)}
+.bk-keys{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px}
+.bk-skip{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2)}
+.bk-skip input{width:17px;height:17px;accent-color:var(--accent)}
+.bk-ino{color:var(--accent)}
+.bk-ictr{margin-top:8px}
+.bk-ictr b{font-size:19px}
+.bk-dots{display:flex;gap:4px;margin:6px 0 5px}
+.bk-dots i{flex:1;height:8px;border-radius:5px;background:rgba(255,255,255,.28)}
+.bk-dots i.opt{background:transparent;border:1.5px dashed rgba(255,255,255,.5)}
+.bk-dots i.done{background:linear-gradient(90deg,var(--accent-2),var(--accent));border:0}
+.bk-dots i.cur{outline:2px solid #fff;outline-offset:1px}
+.bk-nextitem[aria-disabled=true]{opacity:.45}
+.bk-nextitem.ready .rbtn{background:var(--accent);color:var(--navy-d)}
+.cam-bot .shutter:disabled{opacity:.35}

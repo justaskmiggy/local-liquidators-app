@@ -1,5 +1,5 @@
 /* Local Liquidators "Auction Inventory Protocol (Consignor Guide)" — PROTOTYPE.
-   Visual protocol funnel: 1 Bookmark (lot sticker) → 2 Context (4 required + up to 6 optional angles) → 3 Brand (logo) → 4 Specs (data plate) → 5 Working video (≤15s) → 6 Scale (group shot).
+   Visual protocol funnel: 1 Bookmark (lot sticker) → 2 Context (4 required angles + 1 optional extra; with logo + plate that is 4–7 photos per item, max 7) → 3 Brand (logo) → 4 Specs (data plate) → 5 Working video (≤15s) → 6 Scale (group shot).
    Data protocol: A Lot Number · B Consignor ID · C Description = [Brand] + [Type] + [Model/Dimensions] · D Guarantee Type.
    This file: protocol slots + checklist, lot numbers, digital lot sticker, plate read (DEMO pattern), lot-sticker reservation /
    print / ship-to-me orders, and the in-app Protocol help screen. Loaded before sell.js. */
@@ -7,24 +7,27 @@
 const LL = window.LL, esc = LL.esc, I = LL.icons, S = () => LL.state;
 LL.views = LL.views || {}; LL.acts = LL.acts || {};
 LL.CONTACT = {name:'Jackson Cole', email:'Jcole@LocalLiquidators.com', phone:'(602) 865-9684', tel:'+16028659684'};
+/* Photo rule (Michael, Oct 8 2026): 4–7 photos per item = 4 required angles + manufacturer data plate + brand logo + 1 optional extra. Max 7.
+   Slot keys are kept stable with the old 10-angle list (ctx1 front, ctx2 side, ctx4 back, ctx5 top/inside; old ctx3 "right side" becomes the extra). */
 const ANGLES = [
-  {n:'Front', h:'Straight on, 3–4 ft back — the whole item in frame.'},
-  {n:'Left side', h:'Step to the left and show the full side panel.'},
-  {n:'Right side', h:'Now the right side — whole item in frame.'},
-  {n:'Back / hookups', h:'Back panel, cords, gas or water hookups.'},
-  {n:'Top or inside', h:'Open it up — interior, top or work surface.'},
-  {n:'Doors / lids open', h:'Doors, drawers or lids open so buyers see the condition.'},
-  {n:'Detail or wear', h:'Controls, attachments, accessories or any wear worth showing.'},
-  {n:'Extra angle', h:'Another clear shot — a different height or corner.'},
-  {n:'Extra close-up', h:'A tighter shot of a feature, attachment or label.'},
-  {n:'Extra overall', h:'One more well-lit overall shot of the whole item.'}];
-const PART_ANGLES = [{n:'Front', h:'Photograph this piece on its own — whole piece, straight on.'},{n:'Side or inside', h:'Another angle, or open it up.'},{n:'Detail', h:'Controls, wear or accessories.'}];
-const MIN = 4, MAX = 10, EXTRA = MAX - MIN; // 4 required, then up to 6 optional
+  {k:'ctx1', n:'Front', h:'Straight on, 3–4 ft back — the whole item in frame.', role:'front'},
+  {k:'ctx2', n:'Side / angle', h:'Step to the side or a front corner — show the full side panel.', role:'side'},
+  {k:'ctx4', n:'Back / hookups', h:'Back panel, cords, gas or water hookups.', role:'back'},
+  {k:'ctx5', n:'Inside / top / working', h:'Open it up — interior, top or work surface — or show it running.', role:'interior'},
+  {k:'ctx3', n:'Extra (optional)', h:'One more: the other side, controls, accessories or any wear worth showing.', role:'closeup'}];
+const PART_ANGLES = [
+  {s:'1', n:'Front', h:'Photograph this piece on its own — whole piece, straight on.', role:'front'},
+  {s:'2', n:'Side / angle', h:'Step to the side — full side of this piece.', role:'side'},
+  {s:'4', n:'Back / hookups', h:'Back of this piece — cords or hookups.', role:'back'},
+  {s:'5', n:'Inside / top', h:'Open it up or show the top / work surface.', role:'interior'},
+  {s:'3', n:'Extra (optional)', h:'Controls, wear or accessories.', role:'closeup'}];
+const MIN = 4, MAX = ANGLES.length, EXTRA = MAX - MIN; // 4 required angles + 1 optional extra
+const PHOTO_MAX = MAX + 2; // + brand logo + data plate = 7 photos per item, max
 const KINDS = [
   {id:'machine',n:'Machine',h:'Mixers, ovens, slicers, dishwashers — anything that runs or moves.'},
   {id:'cooler',n:'Cooler / Refrigeration',h:'Reach-ins, walk-ins, prep tables, freezers — show the thermometer.'},
   {id:'other',n:'Other',h:'Furniture, smallwares, POS, racks — video is optional.'}];
-const STEPS = [{k:'bookmark',n:'Bookmark',d:'Lot sticker first'},{k:'context',n:'Context',d:'4 required + up to 6 extras'},{k:'brand',n:'Brand',d:'Logo close-up'},{k:'specs',n:'Specs',d:'Serial / data plate'},{k:'video',n:'Video',d:'≤15s working clip'},{k:'scale',n:'Scale',d:'Wide group shot'}];
+const STEPS = [{k:'bookmark',n:'Bookmark',d:'Lot sticker first'},{k:'context',n:'Context',d:'4 required angles + 1 extra'},{k:'brand',n:'Brand',d:'Logo close-up'},{k:'specs',n:'Specs',d:'Serial / data plate'},{k:'video',n:'Video',d:'≤15s working clip'},{k:'scale',n:'Scale',d:'Wide group shot'}];
 const kindOf = it => { if(it.itemKind && KINDS.some(k=>k.id===it.itemKind)) return it.itemKind;
   if(it.cat==='refrig'||it.cat==='prep') return 'cooler';
   if(it.cat==='oven'||it.cat==='mixer'||it.cat==='pos') return 'machine';
@@ -46,14 +49,14 @@ const partName = (it,p,j) => (p && p.name) || 'Main item '+(j+1);
 function slots(it){
   const out = [{k:'sticker',step:'bookmark',grp:'bookmark',n:'Lot sticker',h:'Photograph the lot number sticker FIRST — it divides this lot from the next.',f:'plate',g:'Fill the frame with the lot sticker',req:true}];
   if(it.type!=='lot'){
-    ANGLES.forEach((a,i)=>out.push({k:'ctx'+(i+1),step:'context',grp:'context',i:i+1,n:a.n,h:a.h,f:'full',g:'Whole item in frame · clean background',req:i<MIN,role:i===0?'front':i===3?'back':'closeup'}));
-    out.push({k:'brand',step:'brand',grp:'brand',n:'Brand logo close-up',h:'Zoom in on the brand name or manufacturer emblem.',f:'plate',g:'Fill the frame with the logo',req:true,skip:'brand',role:'closeup'});
+    ANGLES.forEach((a,i)=>out.push({k:a.k,step:'context',grp:'context',i:i+1,n:a.n,h:a.h,f:'full',g:'Whole item in frame · clean background',req:i<MIN,role:a.role}));
+    out.push({k:'brand',step:'brand',grp:'brand',n:'Brand logo close-up',h:'Zoom in on the brand name or manufacturer emblem.',f:'plate',g:'Fill the frame with the logo',req:true,skip:'brand',role:'brand logo close-up'});
     out.push({k:'plate',step:'specs',grp:'specs',n:'Manufacturer plate',h:'Scan the manufacturer plate — model, serial and electrical specs, tight and in focus.',f:'plate',g:'Fill the frame with the plate',req:true,skip:'plate',role:'plate'});
     out.push({k:'video',step:'video',grp:'video',n:'Working video',h:videoPrompt(it),f:'full',g:kindOf(it)==='cooler'?'Show the thermometer under 41°F':kindOf(it)==='machine'?'Show it running / moving':'Up to 15 seconds',req:videoReq(it),skip:'video',media:'video'});
   } else {
     (it.parts||[]).forEach((p,j)=>{ const nm=partName(it,p,j);
-      PART_ANGLES.forEach((a,i)=>out.push({k:p.id+'-'+(i+1),step:'context',grp:p.id,part:p.id,pj:j,i:i+1,pn:nm,n:nm+' · '+a.n,h:a.h,f:'full',g:'This piece in frame',req:i===0,role:i===0?'front':'closeup'}));
-      out.push({k:p.id+'-brand',step:'brand',grp:p.id+'b',part:p.id,pj:j,pn:nm,n:nm+' · Brand logo',h:'Zoom in on this piece’s brand name or emblem.',f:'plate',g:'Fill the frame with the logo',req:true,skip:p.id+'-brand',role:'closeup'});
+      PART_ANGLES.forEach((a,i)=>out.push({k:p.id+'-'+a.s,step:'context',grp:p.id,part:p.id,pj:j,i:i+1,pn:nm,n:nm+' · '+a.n,h:a.h,f:'full',g:'This piece in frame',req:i<MIN,role:a.role}));
+      out.push({k:p.id+'-brand',step:'brand',grp:p.id+'b',part:p.id,pj:j,pn:nm,n:nm+' · Brand logo',h:'Zoom in on this piece’s brand name or emblem.',f:'plate',g:'Fill the frame with the logo',req:true,skip:p.id+'-brand',role:'brand logo close-up'});
       out.push({k:p.id+'-plate',step:'specs',grp:p.id+'s',part:p.id,pj:j,pn:nm,n:nm+' · Manufacturer plate',h:'Scan this piece’s manufacturer plate — model, serial, electrical specs.',f:'plate',g:'Fill the frame with the plate',req:true,skip:p.id+'-plate',role:'plate'}); });
     out.push({k:'group',step:'scale',grp:'scale',n:'Wide overall group shot',h:'Step back and get everything in this lot in one wide shot.',f:'full',g:'The whole group in frame',req:true,role:'overview'});
     out.push({k:'video',step:'video',grp:'video',n:'Working video',h:videoPrompt(it),f:'full',g:kindOf(it)==='cooler'?'Show the thermometer under 41°F':kindOf(it)==='machine'?'Show it running / moving':'Up to 15 seconds',req:videoReq(it),skip:'video',media:'video'});
@@ -63,11 +66,19 @@ function slots(it){
 /* slots that count toward "photo-ready": required & not skipped, plus optional ones already taken */
 const shots = it => { migrate(it); return slots(it).filter(s=>!skipped(it,s) && (s.req || has(it,s.k))); };
 const open = (it,s) => !has(it,s.k) && !skipped(it,s);
-/* next slot to capture after k. Optional slots (angles 5–10, piece photos 2–3) are only offered while still inside the same group. */
+/* next slot to capture after k. Optional slots (the extra angle on an item or a group-lot piece) are only offered while still inside the same group. */
 function next(it,k,leaveGroup){ const all=slots(it), i=all.findIndex(s=>s.k===k), cur=all[i];
   for(let j=i+1;j<all.length;j++){ const s=all[j]; if(!open(it,s)) continue; if(!s.req && (leaveGroup || !cur || s.grp!==cur.grp)) continue; return s; }
   return all.find(s=>s.req && open(it,s)) || null; }
 const ctxCount = it => slots(it).filter(s=>s.step==='context' && !s.part && has(it,s.k)).length;
+/* 4–7 rule per item (or per group-lot piece): required angles done, total photos, plate/logo state */
+function photoRule(it,pid){ const all=slots(it).filter(s=>pid?s.part===pid:!s.part);
+  const ang=all.filter(s=>s.step==='context'), req=ang.filter(s=>s.req), b=all.find(s=>s.step==='brand'), pl=all.find(s=>s.step==='specs');
+  const st=s=>!s?'na':has(it,s.k)?'ok':skipped(it,s)?'skip':'need';
+  const r={reqDone:req.filter(s=>has(it,s.k)).length, min:req.length, total:ang.concat([b,pl]).filter(s=>s&&has(it,s.k)).length, max:PHOTO_MAX, plate:st(pl), brand:st(b)};
+  r.ok = r.reqDone>=r.min && r.plate!=='need' && r.brand!=='need'; return r; }
+const ruleText = r => `${r.reqDone}/${r.min} required · ${r.total} of ${r.max} max`;
+const ruleHTML = r => `<span class="prule"><b class="${r.reqDone>=r.min?'okt':''}">${ruleText(r)}</b><span class="rflag ${r.plate}">${r.plate==='ok'?'✓ ':r.plate==='skip'?'No ':''}Data plate</span><span class="rflag ${r.brand}">${r.brand==='ok'?'✓ ':r.brand==='skip'?'No ':''}Brand logo</span></span>`;
 
 /* ---------- per-lot checklist: the 5 protocol parameters ---------- */
 function checklist(it){ migrate(it); const grp=it.type==='lot', parts=it.parts||[], all=slots(it);
@@ -79,13 +90,13 @@ function checklist(it){ migrate(it); const grp=it.type==='lot', parts=it.parts||
     if(it.skip?.video) return {ok:true,detail:'Doesn’t power on · AS IS'};
     return {ok:false,detail:kindOf(it)==='cooler'?'Cooler video (thermometer <41°F) missing':'Working video missing'}; };
   if(!grp){ const c=ctxCount(it);
-    out.push({k:'context',n:'Context',ok:c>=MIN,detail:c<MIN?`${c} of ${MIN} required angles`:`${MIN} required${c>MIN?` + ${c-MIN} of ${EXTRA} extras`:''}`});
+    out.push({k:'context',n:'Context',ok:c>=MIN,detail:c<MIN?`${c} of ${MIN} required angles`:`${MIN} required${c>MIN?` + ${c-MIN} extra`:''} · ${photoRule(it).total} of ${PHOTO_MAX} photos`});
     out.push({k:'brand',n:'Brand',ok:handled('brand'),detail:has(it,'brand')?'Logo close-up':it.skip?.brand?'No brand logo · brand: '+brandTxt(it):'Logo close-up missing'});
     out.push({k:'specs',n:'Specs',ok:handled('plate'),detail:has(it,'plate')?'Manufacturer plate photo':it.skip?.plate?'No plate · '+(it.model?'model typed':'specs typed or left blank'):'Plate photo missing'});
     const v=vidOk(); out.push({k:'video',n:'Video',ok:v.ok,na:!!v.na,detail:v.detail});
     out.push({k:'scale',n:'Scale',ok:true,na:true,detail:'Group lots only'});
-  } else { const shotP=parts.filter(p=>has(it,p.id+'-1')).length;
-    out.push({k:'context',n:'Context',ok:parts.length>0 && shotP===parts.length,detail:parts.length?`${shotP} of ${parts.length} main item${parts.length===1?'':'s'} photographed`:'Add at least one main item'});
+  } else { const shotP=parts.filter(p=>photoRule(it,p.id).reqDone>=MIN).length;
+    out.push({k:'context',n:'Context',ok:parts.length>0 && shotP===parts.length,detail:parts.length?`${shotP} of ${parts.length} main item${parts.length===1?'':'s'} with ${MIN} required angles`:'Add at least one main item'});
     const bh=parts.filter(p=>handled(p.id+'-brand')).length, sh=parts.filter(p=>handled(p.id+'-plate')).length;
     out.push({k:'brand',n:'Brand',ok:parts.length>0 && bh===parts.length,detail:`${bh} of ${parts.length} logos (or “no logo”)`});
     out.push({k:'specs',n:'Specs',ok:parts.length>0 && sh===parts.length,detail:`${sh} of ${parts.length} plates (or “no plate”)`});
@@ -107,6 +118,7 @@ function migrate(it){ if(it.pv>=4) return; it.pv=4; it.skip=it.skip||{}; it.phot
   if(!it.itemKind) it.itemKind=kindOf(it);
   if(it.type==='lot' && !(it.parts&&it.parts.length)) it.parts=[{id:LL.uid().slice(0,5),name:''}];
   const map = it.type==='lot' ? {overview:'group',closeup:it.parts[0].id+'-1'} : {front:'ctx1',back:'ctx4'};
+  /* note: closeup→piece front keeps old data; front/back keys match the 4–7 slot list */
   Object.entries(map).forEach(([o,n])=>{ if(it.photos[o] && !it.photos[n]){ it.photos[n]=it.photos[o]; const u=LL.photos.get(it.id,o); if(u) LL.photos.set(it.id,n,u); } });
   setTimeout(LL.save,0); }
 
@@ -155,7 +167,7 @@ function descAuto(it){
   return [brand,typeOf(it)].filter(Boolean).join(' ') + (md?' - '+md:''); }
 const desc = it => (it.descC && it.descC.trim()) ? it.descC.trim() : descAuto(it);
 
-LL.proto = {ANGLES,PART_ANGLES,MIN,MAX,EXTRA,STEPS,KINDS,GUAR,TYPE,kindOf,videoReq,videoPrompt,slots,shots,next,open,ctxCount,checklist,missing,nextLot,reserve,fmtRange,migrate,stickerURL,stickerOf,fmtDate,readPlate,typeOf,descAuto,desc,partOf,partName,skipped,has};
+LL.proto = {ANGLES,PART_ANGLES,MIN,MAX,EXTRA,PHOTO_MAX,photoRule,ruleText,ruleHTML,STEPS,KINDS,GUAR,TYPE,kindOf,videoReq,videoPrompt,slots,shots,next,open,ctxCount,checklist,missing,nextLot,reserve,fmtRange,migrate,stickerURL,stickerOf,fmtDate,readPlate,typeOf,descAuto,desc,partOf,partName,skipped,has};
 
 /* ======================= screens ======================= */
 const back = h => `<a class="iconbtn" href="${h}" aria-label="Back">${I.back}</a>`;
@@ -171,7 +183,7 @@ LL.views.protocol = () => { const C=LL.CONTACT;
    <p class="muted" style="margin:6px 0 14px">Every listing needs two things: <b>the Visual Protocol</b> (what buyers see) and <b>the Data Protocol</b> (what buyers read). Precise input means higher bids.</p>
    <div class="card pad"><div class="lbl">Visual protocol — macro to micro</div><ol class="funnel">${[
      ['Bookmark','Lot number sticker','Photograph the lot sticker <b>first</b>. It acts as a digital divider so assets never get mixed up during upload and editing. The app makes a digital sticker for you (or photograph a real one).'],
-     ['Context','4 required + up to 6 extras','Take at least <b>4 clear, well-lit pictures</b>, then up to 6 more optional (10 max). Clean background, good lighting — complete context removes buyer hesitation.'],
+     ['Context','4 required + 1 extra','Take <b>4 required angles</b>: front, side, back and inside/top (or working). Add 1 optional extra if it helps. With the logo and data plate that is <b>4–7 photos per item, 7 max</b>. Clean background, good lighting — complete context removes buyer hesitation.'],
      ['Brand','Logo close-up','Zoom in on the brand logo or manufacturer emblem. Brand names drive search traffic and prove authenticity.'],
      ['Specs','Serial / data plate','A legible, tightly focused photo of the model number, serial plate or electrical tags.'],
      ['Video','≤15 seconds','One working video: machines running/moving; coolers showing a thermometer under 41°F. “Doesn’t power on” sets Guarantee to AS IS. Optional for Other.'],

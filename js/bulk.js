@@ -6,7 +6,8 @@ const LL = window.LL, esc = LL.esc, I = LL.icons, S = () => LL.state;
 const AREAS = ['Kitchen','Front of house','Walk-in','Storage','Other'];
 const CFG = { endpoint: (window.LL_CONFIG && (window.LL_CONFIG.bulkEndpoint || window.LL_CONFIG.analyzeEndpoint)) || 'api/analyze', batch: 8, timeoutMs: 90000 };
 const COND = ['Like New','Good','Fair','Workhorse','Unknown'];
-const B = () => { const s=S(); if(!s.bulk) s.bulk = {job:'', area:'Kitchen', photos:[], seq:0, report:null, showComm:true}; if(s.bulk.showComm===undefined) s.bulk.showComm=true; return s.bulk; };
+const B = () => { const s=S(); if(!s.bulk) s.bulk = {job:'', area:'Kitchen', photos:[], seq:0, report:null, showComm:true, mode:'items', items:[], itemSeq:0}; const b=s.bulk; if(b.showComm===undefined) b.showComm=true;
+  if(!b.items) b.items=[]; if(!b.mode) b.mode = b.photos.some(p=>!p.item) ? 'rooms' : 'items'; return b; };
 const money = n => '$' + Math.round(n||0).toLocaleString('en-US');
 const rng = (a,b) => (!(a>0) && !(b>0)) ? '—' : (Math.round(a)===Math.round(b)) ? money(a) : money(a)+'–'+money(b);
 // An item with no FB and no auction value has no price yet: never show it as $0, and block exports until it's priced.
@@ -39,11 +40,11 @@ const canvasURL = (src, w, h, max, q) => { const r = Math.min(1, max / Math.max(
   c.width = Math.round(w*r); c.height = Math.round(h*r); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', q); };
 async function bitmapOf(file){ try{ return await createImageBitmap(file, {imageOrientation:'from-image'}); }catch(e){
   return await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); } }
-async function addPhoto(src, w, h){
+async function addPhoto(src, w, h, meta){
   const b = B(); const id = 'b' + Date.now().toString(36) + LL.uid().slice(0,4); b.seq = (b.seq||0) + 1;
   const rec = { full: canvasURL(src, w, h, 2048, .82), thumb: canvasURL(src, w, h, 360, .7) };
   await store.put(id, rec);
-  b.photos.push({ id, n: b.seq, area: b.area || 'Kitchen', ts: Date.now() }); b.report && (b.report.stale = true); LL.save();
+  b.photos.push(Object.assign({ id, n: b.seq, area: b.area || 'Kitchen', ts: Date.now() }, meta||{})); b.report && (b.report.stale = true); LL.save();
   return id;
 }
 async function addFiles(files){
@@ -63,12 +64,12 @@ LL.views.sell = r => { const o = origSell(r) || {html:''}; o.html = LL.modeToggl
 
 /* ---------- capture screen ---------- */
 function areaChips(cur, act){ return `<div class="chips bk-areas" role="group" aria-label="Area">${AREAS.map(a => `<button class="chip" data-act="${act}" data-v="${esc(a)}" aria-pressed="${a===cur}">${esc(a)}</button>`).join('')}</div>`; }
-function grid(){ const b = B(); if(!b.photos.length) return `<div class="bk-empty">${I.grid}<h3>Snap the whole room</h3><p>Stand back, get everything in frame. 3–6 photos per room is plenty. Close-ups of data plates help the AI read models.</p></div>`;
-  const groups = AREAS.concat([...new Set(b.photos.map(p=>p.area))].filter(a=>!AREAS.includes(a)));
-  return groups.filter(a => b.photos.some(p => p.area===a)).map(a => { const ps = b.photos.filter(p => p.area===a);
+function grid(){ const b = B(); const rp = b.photos.filter(p=>!p.item); if(!rp.length) return `<div class="bk-empty">${I.grid}<h3>Snap the whole room</h3><p>Stand back, get everything in frame. 3–6 photos per room is plenty. Close-ups of data plates help the AI read models.</p></div>`;
+  const groups = AREAS.concat([...new Set(rp.map(p=>p.area))].filter(a=>!AREAS.includes(a)));
+  return groups.filter(a => rp.some(p => p.area===a)).map(a => { const ps = rp.filter(p => p.area===a);
     return `<div class="bk-grp"><div class="bk-gh"><b>${esc(a)}</b><span>${ps.length} photo${ps.length===1?'':'s'}</span></div><div class="bk-grid">${ps.map(p => `<button class="bk-th" data-act="bkphoto" data-id="${p.id}" aria-label="Photo ${label(p)}, ${esc(p.area)}"><img src="${thumbs.get(p.id)||''}" alt=""><i>${label(p)}</i></button>`).join('')}</div></div>`; }).join(''); }
-LL.views.bulk = () => { const b = B(); const n = b.photos.length;
-  return {html:`${LL.modeToggle('bulk')}
+LL.views.bulk = () => { const b = B(); if(b.mode==='items') return itemsView(); const n = b.photos.filter(p=>!p.item).length;
+  return {html:`${LL.modeToggle('bulk')}${bulkModeSeg('rooms')}
   <section class="bk-hero"><div><span class="badge acc">Bulk walkthrough</span><h2>Shoot rooms, not items.</h2><p>AI lists everything it sees and prices it for Facebook Marketplace and auction.</p></div></section>
   <div class="pad bk-form">
     <label class="field"><span>Job name</span><input type="text" id="bk-job" value="${esc(b.job)}" placeholder="e.g. Husson Bakery - MD" autocomplete="off" enterkeyhint="done"></label>
@@ -82,14 +83,14 @@ LL.views.bulk = () => { const b = B(); const n = b.photos.length;
   <div class="sec"><h2>${n} photo${n===1?'':'s'}</h2>${n?`<button class="link" data-act="bkshare">${I.share.replace('<svg','<svg width="16" height="16"')} Send to my assistant</button>`:''}</div>
   <div class="bk-photos">${grid()}</div>
   ${b.report?`<div class="pad"><a class="btn ghost block sm" href="#/sell/bulk/report">${I.check} Open last report (${b.report.items.length} items)${b.report.stale?' · new photos since':''}</a></div>`:''}
-  ${n?`<div class="pad"><button class="btn danger sm block" data-act="bknew">${I.trash} Start a new walkthrough</button></div>`:''}
+  ${b.photos.length?`<div class="pad"><button class="btn danger sm block" data-act="bknew">${I.trash} Start a new walkthrough</button></div>`:''}
   <div style="height:90px"></div>
-  <div class="stickyfoot noprint"><button class="btn block bk-go" data-act="bkanalyze" ${n?'':'disabled'}>${I.sparkle} Analyze ${n||''} photo${n===1?'':'s'}</button></div>`,
+  <div class="stickyfoot noprint"><button class="btn block bk-go" data-act="bkanalyze" ${n||b.items.length?'':'disabled'}>${I.sparkle} Analyze ${n||''} photo${n===1?'':'s'}${b.items.length?` + ${b.items.length} item${b.items.length===1?'':'s'}`:''}</button></div>`,
   mount(el){ const j = el.querySelector('#bk-job'); j.addEventListener('input', () => { B().job = j.value.trim(); LL.save(); });
     el.querySelector('#bk-lib').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; await addFiles(fs); LL.render(true); }); } }; };
 LL.acts.bkarea = btn => { B().area = btn.dataset.v; LL.save(); LL.$$('[data-act=bkarea]').forEach(x => x.setAttribute('aria-pressed', x===btn)); };
 LL.acts.bknew = async () => { const b = B(); if(!confirm(`Clear ${b.photos.length} photos and the report from this phone? Send them to your assistant first if you still need them.`)) return;
-  await store.clear(); Object.assign(b, {job:'', photos:[], seq:0, report:null}); LL.save(); LL.render(); };
+  await store.clear(); Object.assign(b, {job:'', photos:[], seq:0, report:null, items:[], itemSeq:0, cur:null}); LL.save(); LL.render(); };
 
 /* photo sheet: big view, change area, delete, retake */
 LL.acts.bkphoto = async btn => { const b = B(), p = b.photos.find(x => x.id===btn.dataset.id); if(!p) return;
@@ -104,7 +105,7 @@ LL.acts.bkphoto = async btn => { const b = B(), p = b.photos.find(x => x.id===bt
   ov.onclick = async e => { const a = e.target.closest('[data-act=bkparea]'); if(a){ e.stopPropagation(); p.area = a.dataset.v; b.report && (b.report.stale=true); LL.save(); ov.querySelectorAll('[data-act=bkparea]').forEach(x=>x.setAttribute('aria-pressed',x===a)); return; }
     const x = e.target.closest('[data-x]'); if(!x) return; if(x.dataset.x==='close' && e.target!==x && !x.classList.contains('btn')) return;
     if(x.dataset.x==='del' || x.dataset.x==='retake'){ await store.del(p.id); b.photos = b.photos.filter(q => q!==p); LL.save();
-      if(x.dataset.x==='retake'){ b.area = p.area; LL.save(); ov.onclick=null; ov.classList.remove('bk-tr'); LL.go('#/sell/bulk/cam'); return; } LL.toast('Photo deleted'); }
+      if(x.dataset.x==='retake'){ b.area = p.area; LL.save(); ov.onclick=null; ov.classList.remove('bk-tr'); LL.go(p.item ? `#/sell/bulk/item/${p.item}/${p.slot}` : '#/sell/bulk/cam'); return; } LL.toast('Photo deleted'); }
     ov.onclick=null; close(); };
 };
 LL.acts.bkparea = () => {}; // handled inside the sheet
@@ -139,9 +140,151 @@ LL.views.bulkcam = () => { const b = B();
         try{ navigator.vibrate && navigator.vibrate(30); await addPhoto(video, video.videoWidth, video.videoHeight); upd(); }catch(err){ LL.toast('Could not save that photo — try again'); } busy = false; }
     }); } }; };
 
+/* ---------- ITEM BY ITEM (default): 4–7 photos per item ----------
+   Same rule as single items: 4 required angles + data plate + brand logo (+1 optional extra), 7 max.
+   Plate / logo can be marked "No plate" / "No logo" when the unit truly has none. */
+const SLOTS = [
+  {k:'front', n:'Front', h:'Straight on, 3–4 ft back, whole item in frame', req:true, f:'full'},
+  {k:'side', n:'Side / angle', h:'Step to the side or a front corner, full side panel', req:true, f:'full'},
+  {k:'back', n:'Back / hookups', h:'Back panel, cords, gas or water hookups', req:true, f:'full'},
+  {k:'inside', n:'Inside / top', h:'Open it up, show the top, or show it working', req:true, f:'full'},
+  {k:'plate', n:'Data plate', h:'Model, serial, volts: get close, fill the frame, hold steady', key:'No plate', f:'plate'},
+  {k:'brand', n:'Brand logo', h:'Close-up of the brand name or emblem', key:'No logo', f:'plate'},
+  {k:'extra', n:'Extra (optional)', h:'Controls, accessories or wear worth showing', f:'full'}];
+const IMIN = 4, IMAX = SLOTS.length; // 7
+const AI_ORDER = ['plate','brand','front','side','back','inside','extra'];
+const slotOf = k => SLOTS.find(s => s.k===k);
+const itemBy = n => B().items.find(x => x.n===+n);
+const itemPh = n => B().photos.filter(p => p.item===+n);
+const slotPh = (n,k) => B().photos.find(p => p.item===+n && p.slot===k);
+function irule(n){ const it = itemBy(n) || {skip:{}}, sk = it.skip || {};
+  const st = k => slotPh(n,k) ? 'ok' : sk[k] ? 'skip' : 'need';
+  const r = {reqDone: SLOTS.filter(s => s.req && slotPh(n,s.k)).length, min:IMIN, total:itemPh(n).length, max:IMAX, plate:st('plate'), brand:st('brand')};
+  r.ok = r.reqDone>=IMIN && r.plate!=='need' && r.brand!=='need'; return r; }
+const rtext = r => `${r.reqDone}/${r.min} required · ${r.total} of ${r.max} max`;
+const rhtml = r => LL.proto && LL.proto.ruleHTML ? LL.proto.ruleHTML(r) : `<b>${rtext(r)}</b>`;
+const nextSlot = (n, after) => { const i = after ? SLOTS.findIndex(s=>s.k===after) : -1; const it = itemBy(n) || {skip:{}};
+  const open = s => !slotPh(n,s.k) && !(it.skip||{})[s.k];
+  return SLOTS.slice(i+1).find(open) || SLOTS.find(s => (s.req || s.key) && open(s)) || null; };
+function newItem(){ const b = B(); b.itemSeq = (b.itemSeq||0) + 1; const it = {n:b.itemSeq, area:b.area||'Kitchen', skip:{}, at:Date.now()}; b.items.push(it); b.cur = it.n; LL.save(); return it; }
+const curItem = () => { const b = B(); const it = itemBy(b.cur); return it && irule(it.n).total < IMAX ? it : null; };
+const incomplete = () => B().items.filter(it => !irule(it.n).ok);
+function bulkModeSeg(m){ return `<div class="pad bk-modeseg noprint"><div class="seg" role="group" aria-label="Walkthrough style">
+  <button data-act="bkmode" data-v="items" aria-pressed="${m==='items'}">Item by item · 4–7</button>
+  <button data-act="bkmode" data-v="rooms" aria-pressed="${m==='rooms'}">Quick room scan</button></div></div>`; }
+LL.acts.bkmode = b => { B().mode = b.dataset.v; LL.save(); LL.render(true); };
+function slotTiles(it){ const r = irule(it.n);
+  return `<div class="bk-slots">${SLOTS.map((s,i) => { const p = slotPh(it.n, s.k), sk = (it.skip||{})[s.k];
+    return `<button class="bk-slot ${s.req?'req':''} ${s.key?'key':''} ${p?'done':''} ${sk?'skip':''}" ${p?`data-act="bkphoto" data-id="${p.id}"`:`data-nav="#/sell/bulk/item/${it.n}/${s.k}"`} aria-label="${esc(s.n)}${p?' (done)':sk?' (marked '+esc(s.key)+')':s.req?' (required)':''}">
+      <span class="th">${p?`<img src="${thumbs.get(p.id)||''}" alt="">`:sk?'<b>—</b>':I.camera}</span><span class="nm"><i>${i+1}</i>${esc(s.n.replace(' (optional)',''))}</span><em>${p?'✓':sk?esc(s.key):s.req?'Required':s.key?'Needed':'Optional'}</em></button>`; }).join('')}</div>
+   <div class="bk-keys">${['plate','brand'].filter(k => !slotPh(it.n,k)).map(k => `<label class="bk-skip"><input type="checkbox" data-act="bkskip" data-n="${it.n}" data-k="${k}" ${(it.skip||{})[k]?'checked':''}> ${esc(slotOf(k).key)} on this item</label>`).join('')}</div>`; }
+function itemCardHTML(it){ const r = irule(it.n), nx = nextSlot(it.n);
+  return `<div class="card pad bk-icard ${r.ok?'ok':''}" id="bk-item-${it.n}"><div class="bk-ich"><b>Item ${it.n}</b><span class="small muted">${esc(it.area)}</span>
+     <button class="iconbtn sm" data-act="bkdelitem" data-n="${it.n}" aria-label="Delete item ${it.n}">${I.trash}</button></div>
+   <div class="bk-irule">${rhtml(r)}</div>${slotTiles(it)}
+   ${r.total<IMAX && nx ? `<a class="btn ${r.ok?'ghost':'accent'} sm block" style="margin-top:8px" href="#/sell/bulk/item/${it.n}/${nx.k}">${I.camera} ${r.ok?'Add':'Next'}: ${esc(nx.n)}</a>` : ''}</div>`; }
+function itemsView(){ const b = B(), items = b.items, bad = incomplete(), cur = curItem();
+  const startLbl = cur && !irule(cur.n).ok ? `Continue item ${cur.n}` : `Shoot item ${(b.itemSeq||0)+1}`;
+  const startHref = cur && !irule(cur.n).ok ? `#/sell/bulk/item/${cur.n}` : '#/sell/bulk/item/new';
+  const roomN = b.photos.filter(p=>!p.item).length;
+  return {html:`${LL.modeToggle('bulk')}${bulkModeSeg('items')}
+  <section class="bk-hero"><div><span class="badge acc">Bulk · item by item</span><h2>4–7 photos per item.</h2><p>Front, side, back, inside, then the <b>data plate</b> and <b>brand logo</b>. 7 max. AI reads each item and prices it for Facebook Marketplace and auction.</p></div></section>
+  <div class="pad bk-form">
+    <label class="field"><span>Job name</span><input type="text" id="bk-job" value="${esc(b.job)}" placeholder="e.g. Husson Bakery - MD" autocomplete="off" enterkeyhint="done"></label>
+    <div class="lbl">Area for the next item</div>${areaChips(b.area,'bkarea')}
+    <div class="bk-cap">
+      <a class="btn accent block bk-big" href="${startHref}">${I.camera} ${startLbl}</a>
+      <label class="btn ghost block bk-big bk-lib">${I.image} Add photos for ${cur?'item '+cur.n:'a new item'}<input type="file" accept="image/*" multiple id="bk-ilib"></label>
+    </div>
+    <p class="hint center">From Photos: pick 4 to 7 shots of <b>one</b> item. They fill the slots in order: front, side, back, inside, plate, logo, extra.</p>
+  </div>
+  <div class="sec"><h2>${items.length} item${items.length===1?'':'s'}</h2>${b.photos.length?`<button class="link" data-act="bkshare">${I.share.replace('<svg','<svg width="16" height="16"')} Send to my assistant</button>`:''}</div>
+  <div class="pad bk-items">${items.length ? items.slice().reverse().map(itemCardHTML).join('') : `<div class="bk-empty">${I.camera}<h3>Shoot your first item</h3><p>4 required angles + the data plate + the brand logo. Up to 7 photos per item.</p></div>`}</div>
+  ${roomN?`<p class="pad small muted">Plus ${roomN} room-scan photo${roomN===1?'':'s'} (see Quick room scan).</p>`:''}
+  ${b.report?`<div class="pad"><a class="btn ghost block sm" href="#/sell/bulk/report">${I.check} Open last report (${b.report.items.length} items)${b.report.stale?' · new photos since':''}</a></div>`:''}
+  ${b.photos.length||items.length?`<div class="pad"><button class="btn danger sm block" data-act="bknew">${I.trash} Start a new walkthrough</button></div>`:''}
+  <div style="height:90px"></div>
+  <div class="stickyfoot noprint"><button class="btn block bk-go" data-act="bkanalyze" ${items.length||roomN?'':'disabled'}>${I.sparkle} ${bad.length?`Item ${bad[0].n}: ${irule(bad[0].n).reqDone<IMIN?`${IMIN-irule(bad[0].n).reqDone} more required`:'needs plate / logo'}`:`Analyze ${items.length} item${items.length===1?'':'s'}`}</button></div>`,
+  mount(el){ const j = el.querySelector('#bk-job'); j.addEventListener('input', () => { B().job = j.value.trim(); LL.save(); });
+    el.querySelector('#bk-ilib').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; await addItemFiles(fs); LL.render(true); }); } }; }
+/* several photos for one item from the library: fill empty slots in order, never past 7 */
+async function addItemFiles(files, n){ files = [...files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/i.test(f.name)); if(!files.length) return 0;
+  const it = (n && itemBy(n)) || curItem() || newItem(); const open = SLOTS.filter(s => !slotPh(it.n, s.k));
+  if(!open.length){ LL.toast(`Item ${it.n} already has ${IMAX} photos (the max). Delete one to swap it.`); return 0; }
+  const use = files.slice(0, open.length); let k = 0;
+  for(const f of use){ try{ const bm = await bitmapOf(f); const s = open[k]; await addPhoto(bm, bm.width || bm.naturalWidth, bm.height || bm.naturalHeight, {item:it.n, slot:s.k, area:it.area}); delete (it.skip||{})[s.k]; bm.close && bm.close(); k++; }catch(e){ console.warn('photo failed', e); } }
+  const r = irule(it.n), over = files.length - use.length;
+  LL.toast(over ? `Max ${IMAX} photos per item: ${over} extra left out. Item ${it.n}: ${rtext(r)}` : `Item ${it.n}: ${rtext(r)}${r.reqDone<IMIN?` · ${IMIN-r.reqDone} more required`:''}`); LL.save(); return k; }
+LL.acts.bkskip = c => { const it = itemBy(c.dataset.n); if(!it) return; it.skip = it.skip || {}; if(c.checked) it.skip[c.dataset.k] = true; else delete it.skip[c.dataset.k]; LL.save(); LL.render(true); };
+LL.acts.bkdelitem = async b => { const n = +b.dataset.n, ps = itemPh(n); if(!confirm(`Delete item ${n} and its ${ps.length} photo${ps.length===1?'':'s'}?`)) return;
+  for(const p of ps) await store.del(p.id); const bb = B(); bb.photos = bb.photos.filter(p => p.item!==n); bb.items = bb.items.filter(x => x.n!==n); if(bb.cur===n) bb.cur = null; bb.report && (bb.report.stale = true); LL.save(); LL.render(true); };
+
+/* item camera: guided slot by slot, counter on top, 7 max, "Next item" only once the 4 required are in */
+LL.views.bulkitem = r => { const b = B();
+  if(r.n==='new'){ const it = newItem(); LL.go(`#/sell/bulk/item/${it.n}`, true); return {html:''}; }
+  const it = itemBy(r.n); if(!it){ LL.go('#/sell/bulk', true); return {html:''}; } b.cur = it.n;
+  const full = irule(it.n).total >= IMAX;
+  const cur = (r.slot && slotOf(r.slot)) || nextSlot(it.n) || SLOTS[0];
+  return {overlay:true, html:`<div class="cam bk-cam bk-icam"><video playsinline muted autoplay aria-hidden="true"></video><div class="shade"></div><div class="bk-flash"></div>
+   <div class="cam-top"><div class="hd"><div class="ti"><span class="pstep">Item ${it.n} · ${esc(it.area)} · photo ${SLOTS.indexOf(cur)+1} of ${IMAX}</span><b id="bi-title">${esc(cur.n)}</b><small id="bi-hint">${esc(cur.h)}</small></div><button class="rbtn" data-x="done" aria-label="Done">${I.x}</button></div>
+    <div class="pctr bk-ictr"><b id="bi-count"></b><div class="bk-dots" id="bi-dots"></div><span id="bi-sub"></span></div>
+    <div class="cam-x" id="bi-x"></div></div>
+   <div class="frame ${cur.f==='plate'?'plate':''}" id="bi-frame" aria-hidden="true"><i></i><i></i><i></i><i></i><div class="sil"></div><div class="gl" id="bi-gl">${cur.f==='plate'?'Fill the frame':'Whole item in frame'}</div></div>
+   <div class="cam-fb" hidden><h3>Use your phone camera</h3><p id="bk-fbmsg">Live camera isn’t available here. Tap below: each photo goes into the next slot.</p>
+    <label class="btn accent">${I.camera} Take <span id="bi-fbname">${esc(cur.n)}</span><input type="file" accept="image/*" capture="environment" id="bk-fbin" hidden></label>
+    <label class="btn ghost">${I.image} Add from Photos (up to ${IMAX})<input type="file" accept="image/*" multiple id="bk-fblib" hidden></label>
+    <button class="btn ghost" data-x="done">Done</button></div>
+   <div class="cam-bot"><button class="side" data-x="done"><span class="bk-last">${I.image}</span><span>Done</span></button>
+    <button class="shutter" aria-label="Take photo" data-x="snap" ${full?'disabled':''}></button>
+    <button class="side bk-nextitem" data-x="nextitem"><span class="rbtn">${I.chev}</span><span>Next item</span></button></div></div>`,
+  mount(el){ let stream = null, busy = false, slot = cur.k; const video = el.querySelector('video'), fb = el.querySelector('.cam-fb');
+    const stop = () => { if(stream) stream.getTracks().forEach(t => t.stop()); stream = null; }; LL.cleanup.push(stop);
+    const upd = () => { const r = irule(it.n), s = slotOf(slot), full = r.total >= IMAX;
+      el.querySelector('#bi-count').textContent = rtext(r);
+      el.querySelector('#bi-dots').innerHTML = SLOTS.map(x => `<i class="${slotPh(it.n,x.k)?'done':''} ${x.k===slot?'cur':''} ${x.req?'':'opt'}" title="${esc(x.n)}"></i>`).join('');
+      el.querySelector('#bi-sub').textContent = r.reqDone<IMIN ? `${IMIN-r.reqDone} more required` : r.plate==='need' && r.brand==='need' ? 'Now the data plate + brand logo' : r.plate==='need' ? 'Now the data plate' : r.brand==='need' ? 'Now the brand logo' : full ? 'Item full (7 of 7). Tap Next item.' : 'Item done. 1 optional extra, or Next item.';
+      el.querySelector('.pstep').textContent = `Item ${it.n} · ${it.area} · photo ${SLOTS.indexOf(s)+1} of ${IMAX}`;
+      el.querySelector('#bi-title').textContent = full ? `Item ${it.n} is full` : s.n; el.querySelector('#bi-hint').textContent = full ? `${IMAX} photos is the max per item.` : s.h;
+      el.querySelector('#bi-frame').classList.toggle('plate', s.f==='plate'); el.querySelector('#bi-gl').textContent = s.f==='plate' ? 'Fill the frame' : 'Whole item in frame';
+      const fbn = el.querySelector('#bi-fbname'); if(fbn) fbn.textContent = s.n;
+      el.querySelector('[data-x=snap]').disabled = full;
+      el.querySelector('#bi-x').innerHTML = (s.key && !full ? `<button class="xbtn" data-x="skipkey">${esc(s.key)} on this item</button>` : '') + (r.reqDone>=IMIN && !full && s.k!=='extra' && r.plate!=='need' && r.brand!=='need' ? `<button class="xbtn" data-x="extra">Add optional extra</button>` : '');
+      const nb = el.querySelector('[data-x=nextitem]'); nb.classList.toggle('ready', r.ok); nb.setAttribute('aria-disabled', String(r.reqDone<IMIN));
+      const l = itemPh(it.n).slice(-1)[0]; if(l && thumbs.get(l.id)) el.querySelector('.bk-last').innerHTML = `<img src="${thumbs.get(l.id)}" alt="">`; };
+    const advance = () => { const n = nextSlot(it.n, slot); slot = n ? n.k : (SLOTS.find(x => !slotPh(it.n,x.k)) || SLOTS[SLOTS.length-1]).k; upd(); };
+    const save = async (src, w, h) => { const r = irule(it.n); if(r.total >= IMAX){ LL.toast(`${IMAX} photos max per item`); return; }
+      if(slotPh(it.n, slot)){ const old = slotPh(it.n, slot); await store.del(old.id); B().photos = B().photos.filter(p => p!==old); }
+      await addPhoto(src, w, h, {item:it.n, slot, area:it.area}); delete (it.skip||{})[slot]; LL.save(); advance(); };
+    upd();
+    (async () => { if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ fb.hidden = false; return; }
+      try{ stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}, width:{ideal:3840}, height:{ideal:2160}}, audio:false}); video.srcObject = stream; await video.play().catch(()=>{}); }
+      catch(e){ fb.hidden = false; if(e.name==='NotAllowedError') el.querySelector('#bk-fbmsg').textContent = 'Camera permission is off for this site. Tap below to use the phone camera: each photo goes into the next slot.'; } })();
+    el.querySelector('#bk-fbin').addEventListener('change', async e => { const f = [...e.target.files][0]; e.target.value = ''; if(!f) return; try{ const bm = await bitmapOf(f); await save(bm, bm.width||bm.naturalWidth, bm.height||bm.naturalHeight); bm.close && bm.close(); }catch(err){ LL.toast('Could not save that photo'); } });
+    el.querySelector('#bk-fblib').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; await addItemFiles(fs, it.n); const n = nextSlot(it.n); slot = n ? n.k : slot; upd(); });
+    el.addEventListener('click', async e => { const x = e.target.closest('[data-x]'); if(!x) return; const k = x.dataset.x;
+      if(k==='done'){ stop(); LL.go('#/sell/bulk', true); return; }
+      if(k==='skipkey'){ it.skip = it.skip || {}; it.skip[slot] = true; LL.save(); LL.toast(`Item ${it.n}: ${slotOf(slot).key.toLowerCase()}`); advance(); return; }
+      if(k==='extra'){ slot = 'extra'; upd(); return; }
+      if(k==='nextitem'){ const r = irule(it.n);
+        if(r.reqDone < IMIN){ LL.toast(`Item ${it.n}: ${IMIN-r.reqDone} more required photo${IMIN-r.reqDone===1?'':'s'} first (${rtext(r)})`); return; }
+        if(!r.ok){ const miss = ['plate','brand'].filter(q => r[q]==='need'); const ok = confirm(`Item ${it.n} has no ${miss.map(q => q==='plate'?'data plate':'brand logo').join(' or ')} photo. Those help the AI read the model and serial.\n\nOK = mark "${miss.map(q => slotOf(q).key).join(' / ')}" and go to the next item. Cancel = go back and snap it.`);
+          if(!ok){ slot = miss[0]; upd(); return; } it.skip = it.skip || {}; miss.forEach(q => it.skip[q] = true); LL.save(); }
+        const nx = newItem(); stop(); LL.go(`#/sell/bulk/item/${nx.n}`, true); return; }
+      if(k==='snap'){ if(busy || !video.videoWidth) return; busy = true; const f = el.querySelector('.bk-flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
+        try{ navigator.vibrate && navigator.vibrate(30); await save(video, video.videoWidth, video.videoHeight); }catch(err){ LL.toast('Could not save that photo — try again'); } busy = false; }
+    }); } }; };
+LL.bulkRule = { SLOTS, IMIN, IMAX, irule, rtext };
+
 /* ---------- analyze ---------- */
 let running = false;
-LL.acts.bkanalyze = async () => { const b = B(); if(running || !b.photos.length) return; running = true; await ready;
+LL.acts.bkanalyze = async () => { const b = B(); if(running || (!b.photos.length && !b.items.length)) return;
+  if(b.mode==='items'){ const bad = incomplete(); if(bad.length){ const it = bad[0], r = irule(it.n);
+      if(r.reqDone < IMIN){ LL.toast(`Item ${it.n} needs ${IMIN-r.reqDone} more required photo${IMIN-r.reqDone===1?'':'s'} (${rtext(r)})`); LL.$('#bk-item-'+it.n)?.scrollIntoView({block:'center'}); return; }
+      if(!confirm(`${bad.length} item${bad.length===1?' has':'s have'} no data plate or brand logo photo (item ${bad.map(x=>x.n).join(', ')}). Mark them "No plate / No logo" and analyze anyway?`)){ LL.$('#bk-item-'+it.n)?.scrollIntoView({block:'center'}); return; }
+      bad.forEach(x => { const rr = irule(x.n); x.skip = x.skip || {}; if(rr.plate==='need') x.skip.plate = true; if(rr.brand==='need') x.skip.brand = true; }); LL.save(); }
+    if(!b.items.some(x => itemPh(x.n).length) && !b.photos.some(p => !p.item)){ LL.toast('No photos yet'); return; } }
+  else if(!b.photos.some(p => !p.item)){ LL.toast('No room photos yet'); return; }
+  running = true; await ready;
   const ov = LL.$('#overlay'); const tn = b.photos.slice(0, 9).map(p => `<div><img src="${thumbs.get(p.id)||''}" alt=""></div>`).join('');
   ov.innerHTML = `<div class="bk-analyzing"><div class="scan"><div class="imgs">${tn}</div><p id="bk-step">Looking at your photos…</p></div>
     <div class="bk-steps"><div data-s="0" class="on"><i class="spin"></i>Spotting every item in ${b.photos.length} photo${b.photos.length===1?'':'s'}</div><div data-s="1"><i></i>Reading brands &amp; model plates</div><div data-s="2"><i></i>Researching used values: Marketplace &amp; auction</div><div data-s="3"><i></i>Building your report</div></div>
@@ -149,17 +292,45 @@ LL.acts.bkanalyze = async () => { const b = B(); if(running || !b.photos.length)
   ov.classList.remove('bk-tr'); ov.classList.add('on');
   const step = (i, txt) => { ov.querySelectorAll('[data-s]').forEach(d => { const k=+d.dataset.s; d.className = k<i?'done':k===i?'on':''; d.querySelector('i').className = k<i?'ok':k===i?'spin':''; }); if(txt) ov.querySelector('#bk-step').textContent = txt; };
   let rep;
-  try{ rep = await runReal(b, step); }catch(e){ console.info('[Bulk] backend unavailable → DEMO:', e.message); rep = await runDemo(b, step, e); }
+  try{ rep = b.mode==='items' ? await runItems(b, step) : await runReal(b, step); }catch(e){ console.info('[Bulk] backend unavailable → DEMO:', e.message); rep = await runDemo(b, step, e); }
   step(4); b.report = rep; LL.save(); running = false;
   await new Promise(r => setTimeout(r, 400)); ov.classList.remove('on'); ov.innerHTML = ''; LL.go('#/sell/bulk/report');
 };
-async function runReal(b, step){
-  const ph = b.photos.slice(); const items = []; let notes = [];
+async function imgOf(p){ const rec = await store.get(p.id); if(!rec) return null; const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = rec.full; });
+  return canvasURL(img, img.naturalWidth, img.naturalHeight, 1280, .72); }
+const wait = ms => new Promise(r => setTimeout(r, ms));
+/* item-by-item: one AI call per item (<=7 photos, data plate first so the model/serial gets read), paced under the 12/min server limit */
+async function runItems(b, step){ const list = b.items.filter(x => itemPh(x.n).length); const out = []; let notes = [], ok = 0, room = [];
+  for(let i = 0; i < list.length; i++){ const it = list[i], ps = AI_ORDER.map(k => slotPh(it.n, k)).filter(Boolean);
+    step(i ? 1 : 0, `Reading item ${it.n} (${i+1} of ${list.length})…`);
+    const images = []; for(const p of ps){ const d = await imgOf(p); if(d) images.push({ id: label(p), area: `${it.area} · item ${it.n} · ${slotOf(p.slot).n}`.slice(0,40), dataUrl: d }); }
+    const job = `${(b.job||'Walkthrough').slice(0,30)} | ITEM ${it.n}: ALL photos = ONE unit`;
+    let j = null, status = 0;
+    for(let attempt = 0; attempt < 2 && !j; attempt++){
+      const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), CFG.timeoutMs);
+      try{ const r = await fetch(CFG.endpoint, {method:'POST', headers:{'Content-Type':'application/json'}, signal: ctrl.signal, body: JSON.stringify({mode:'bulk', job, images})}); status = r.status;
+        if(r.ok){ const x = await r.json(); if(x && Array.isArray(x.items)) j = x; } }
+      catch(e){ status = status || 0; } finally { clearTimeout(to); }
+      if(!j && status===429){ step(1, `Speedy AI is busy. Waiting a moment before item ${it.n}…`); await wait(20000); }
+      else if(!j) break; }
+    if(!j){ if(!ok && i===0) throw Object.assign(new Error('backend ' + status), {status}); // nothing worked: labeled example report
+      out.push(norm({name:`Item ${it.n}`, area:it.area, qty:1, confidence:'low', photos:ps.map(label), flags:['AI couldn’t finish this item. Tap Analyze again or enter a price.']})); continue; }
+    ok++; if(j.notes) notes.push(`Item ${it.n}: ${j.notes}`);
+    const lines = j.items.map(norm); const main = lines.slice().sort((a,c) => (c.auc[1]||c.fb[1]) - (a.auc[1]||a.fb[1]))[0] || norm({name:`Item ${it.n}`, confidence:'low'});
+    main.area = it.area; main.photos = ps.map(label); main.itemNo = it.n;
+    const sk = it.skip || {}; if(sk.plate) main.flags = ['No data plate photo: confirm model/serial'].concat(main.flags).slice(0,4); if(sk.brand && !main.brand) main.flags = ['No brand logo photo'].concat(main.flags).slice(0,4);
+    out.push(main);
+    if(list.length > 10 && i < list.length - 1) await wait(5200); }
+  const roomPh = b.photos.filter(p => !p.item);
+  if(roomPh.length){ try{ const rr = await runReal(b, step, roomPh); room = rr.items; if(rr.notes) notes.push(rr.notes); }catch(e){ notes.push('Room-scan photos could not be read this time.'); } }
+  step(2, 'Researching values…');
+  return { source:'ai', at: Date.now(), job: b.job, photos: b.photos.length, mode:'items', items: out.concat(room), notes: notes.join(' ') }; }
+async function runReal(b, step, only){
+  const ph = (only || b.photos.filter(p => !p.item)).slice(); const items = []; let notes = [];
   for(let i = 0; i < ph.length; i += CFG.batch){
     const part = ph.slice(i, i + CFG.batch); step(i ? 1 : 0, `Looking at photos ${i+1}–${i+part.length} of ${ph.length}…`);
     const images = [];
-    for(const p of part){ const rec = await store.get(p.id); if(!rec) continue; const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = rec.full; });
-      images.push({ id: label(p), area: p.area, dataUrl: canvasURL(img, img.naturalWidth, img.naturalHeight, 1280, .72) }); }
+    for(const p of part){ const d = await imgOf(p); if(d) images.push({ id: label(p), area: p.area, dataUrl: d }); }
     const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), CFG.timeoutMs);
     let r; try{ r = await fetch(CFG.endpoint, {method:'POST', headers:{'Content-Type':'application/json'}, signal: ctrl.signal, body: JSON.stringify({mode:'bulk', job: b.job, images})}); } finally { clearTimeout(to); }
     if(!r.ok) throw Object.assign(new Error('backend ' + r.status), {status: r.status});
@@ -232,7 +403,7 @@ function itemCard(it, rep){ const tag = it.qty>1 ? `<span class="bk-q">×${it.qt
     <div class="row"><label class="field"><span>FB low</span><input type="number" inputmode="numeric" name="fb0" value="${it.fb[0]||''}" placeholder="Enter price"></label><label class="field"><span>FB high</span><input type="number" inputmode="numeric" name="fb1" value="${it.fb[1]||''}" placeholder="Enter price"></label></div>
     <div class="row"><label class="field"><span>Auction low</span><input type="number" inputmode="numeric" name="auc0" value="${it.auc[0]||''}" placeholder="Enter price"></label><label class="field"><span>Auction high</span><input type="number" inputmode="numeric" name="auc1" value="${it.auc[1]||''}" placeholder="Enter price"></label></div>
     <div class="row"><button type="button" class="btn danger sm" data-act="bkdel" data-id="${it.id}">${I.trash} Delete</button><button type="submit" class="btn sm">${I.check} Save</button></div></form></div>`;
-  return `<div class="card bk-item${unpriced(it)?' noprice':''}" data-id="${it.id}"><div class="bk-ih"><div class="bk-it"><b>${esc(it.name)} ${tag}</b>${(it.brand||it.model)?`<small>${esc([it.brand,it.model].filter(Boolean).join(' '))}</small>`:''}</div>
+  return `<div class="card bk-item${unpriced(it)?' noprice':''}" data-id="${it.id}"><div class="bk-ih"><div class="bk-it"><b>${it.itemNo?`<span class="bk-ino">#${it.itemNo}</span> `:''}${esc(it.name)} ${tag}</b>${(it.brand||it.model)?`<small>${esc([it.brand,it.model].filter(Boolean).join(' '))}</small>`:''}</div>
     <button class="iconbtn sm noprint" data-act="bkedit" data-id="${it.id}" aria-label="Edit ${esc(it.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
    <div class="bk-meta"><span class="bk-chip">${esc(it.condition)}</span><span class="bk-chip conf-${it.confidence}">${it.confidence} confidence</span>${it.photos.length?`<span class="bk-chip ph">${I.image.replace('<svg','<svg width="13" height="13"')} ${it.photos.join(', ')}</span>`:''}</div>
    <div class="bk-vals"><div><small>FB Market</small><b>${vr(it, it.fb[0]*it.qty, it.fb[1]*it.qty)}</b></div><div><small>Auction</small><b>${vr(it, it.auc[0]*it.qty, it.auc[1]*it.qty)}</b></div><div><small>New${it.qty>1?' (each)':''}</small><b>${it.newRetail?'~'+money(it.newRetail):'—'}</b></div></div>
@@ -300,7 +471,7 @@ LL.acts.bkshare = async () => { const b = B(); if(!b.photos.length){ LL.toast('N
   ov.classList.add('on','bk-tr');
   const files = [];
   for(const p of b.photos){ const rec = await store.get(p.id); if(!rec) continue; const bin = atob(rec.full.split(',')[1]); const u = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i);
-    files.push(new File([u], `${name}-${label(p)}-${slug(p.area)}.jpg`, {type:'image/jpeg'})); }
+    files.push(new File([u], p.item ? `${name}-item${String(p.item).padStart(2,'0')}-${SLOTS.findIndex(s=>s.k===p.slot)+1}-${p.slot}-${label(p)}.jpg` : `${name}-${label(p)}-${slug(p.area)}.jpg`, {type:'image/jpeg'})); }
   const listFile = new File([text], `${name}-list.txt`, {type:'text/plain'});
   const can = d => !!(navigator.canShare && navigator.canShare(d));
   const SIZE = 10, chunks = []; for(let i=0;i<files.length;i+=SIZE) chunks.push(files.slice(i,i+SIZE));

@@ -3,7 +3,7 @@
 const LL = window.LL, esc = LL.esc, I = LL.icons, S = () => LL.state;
 LL.views = LL.views || {}; LL.acts = LL.acts || {};
 /* Photo positions follow the Local Liquidators Auction Inventory Protocol (see js/protocol.js):
-   lot sticker → 4 required (+6 optional) angles → brand logo → manufacturer plate → ≤15s video (→ main items + wide group shot for group / bulk lots). */
+   lot sticker → 4 required angles (+1 optional extra) → brand logo → manufacturer plate (4–7 photos per item, max 7) → ≤15s video (→ main items + wide group shot for group / bulk lots). */
 const PR = LL.proto;
 const TIPS = ['Lot sticker first — it keeps every lot separate','Clean background, good lighting','Stand 3–4 ft back and show the whole item','Light the front of the item; avoid a bright window behind it','Hold steady — brace your elbows'];
 LL.shotsOf = it => PR.shots(it);
@@ -76,7 +76,7 @@ LL.views.sell = () => { const p=S().profile; if(!p.done) return LL.views.onboard
   const llbar = `<div class="llbar">${PR.stickerStatusHTML()}<a class="protolink" href="#/sell/protocol">${I.info} Protocol</a></div>`;
   const body = st.n ? `${llbar}<div style="padding:4px 16px 0;display:flex;gap:10px"><a class="btn accent block sm" href="#/sell/item/new/photos">${I.camera} Add item</a><a class="btn ghost block sm" href="#/sell/item/newlot/photos">${I.grid} Add group lot</a></div>${S().items.map(post).join('')}<div style="height:84px"></div>
      <div class="stickyfoot"><a class="btn accent" style="flex:0 0 auto" href="#/sell/export">${I.download} Export</a><a class="btn block" href="#/sell/submit">Submit to my rep ${I.chev}</a></div>`
-   : `<div class="empty">${I.camera}<h3>Let’s shoot your first item</h3><p>You take the photos, your rep does the rest. We follow Local Liquidators’ inventory protocol: lot sticker, 4 required angles (+ up to 6 extras), brand logo, data plate, working video — and we coach you on lighting and framing.</p>
+   : `<div class="empty">${I.camera}<h3>Let’s shoot your first item</h3><p>You take the photos, your rep does the rest. We follow Local Liquidators’ inventory protocol: lot sticker, 4–7 photos per item (4 required angles + brand logo + data plate, 7 max), working video — and we coach you on lighting and framing.</p>
       <div style="display:grid;gap:10px;margin-top:18px"><a class="btn accent block" href="#/sell/item/new/photos">${I.camera} Add first item</a><button class="btn ghost block" data-act="sample">${I.sparkle} Load example inventory (12 items)</button></div></div>${llbar}`;
   return {html:`${hero}${stories}${body}`}; };
 LL.acts.sample = () => { LL.loadSample(); LL.render(true); LL.toast('Example inventory loaded — 12 items'); };
@@ -146,6 +146,7 @@ function protoPage(it){ const grp=it.type==='lot', all=PR.slots(it), by=k=>all.f
   // 1 bookmark
   let h = `<label class="listrow grouprow"><div><b>Group / bulk lot</b><span class="small muted">Several pieces sold together: shoot the main pieces one by one, then a wide group shot.</span></div><span class="switch"><input type="checkbox" data-act="grouplot" data-id="${it.id}" ${grp?'checked':''} aria-label="Group / bulk lot"><i></i></span></label>
    <div class="card pad pcard"><div class="pc-h"><b>${ok===need.length?'All '+need.length+' parameters hit':ok+' of '+need.length+' parameters done'}</b><a class="small tlink" href="#/sell/protocol">What’s this?</a></div>${pchk(it)}</div>`;
+  if(!grp) h += `<div class="card pad prulecard" aria-live="polite"><div class="lbl">Photos for this item · 4–7</div>${PR.ruleHTML(PR.photoRule(it))}<p class="small muted" style="margin-top:6px">4 required angles + the data plate + the brand logo. 1 optional extra. ${PR.PHOTO_MAX} max.</p></div>`;
   h += sec(1,'Bookmark','Lot sticker — photo #1', `<div class="stkrow"><a class="stkthumb" href="${it.stickerMode==='physical'?`#/sell/cam/${it.id}/sticker`:'#'}" ${it.stickerMode==='physical'?'':'data-act="noop"'}>${thumb(it,'sticker')?`<img src="${thumb(it,'sticker')}" alt="Lot sticker ${esc(it.lot)}">`:`<div class="th">${I.camera}<span>Photograph your sticker</span></div>`}</a>
      <div class="stkf"><label class="field"><span>Lot #</span><input type="number" min="1" inputmode="numeric" data-f="lot" value="${esc(it.lot)}" aria-label="Lot number"></label>${dup?'<p class="warnt small">Another lot already uses this number.</p>':''}
      ${cid?`<p class="small muted">Consignor <b>${esc(cid)}</b></p>`:`<label class="field"><span>Consignor ID</span><input type="text" data-pf="consignorId" placeholder="Set once" autocomplete="off"></label>`}</div></div>
@@ -155,8 +156,8 @@ function protoPage(it){ const grp=it.type==='lot', all=PR.slots(it), by=k=>all.f
   h += `<div class="card pad" style="margin-bottom:12px"><div class="lbl">What is this item?</div><div class="seg kindseg">${PR.KINDS.map(k=>`<button type="button" aria-pressed="${PR.kindOf(it)===k.id}" data-act="setkind" data-id="${it.id}" data-v="${k.id}">${k.n}</button>`).join('')}</div><p class="hint" style="margin-top:8px">${esc(PR.KINDS.find(k=>k.id===PR.kindOf(it)).h)}</p></div>`;
   if(!grp){ const c=PR.ctxCount(it), extra=Math.max(0,c-PR.MIN);
     const ctxSub = c<PR.MIN?`${c} of ${PR.MIN} required`:`${PR.MIN} required${extra?` + ${extra} of ${PR.EXTRA} extras`:''}`;
-    h += sec(2,'Context',ctxSub, `<div class="pbar" aria-label="${ctxSub}">${PR.ANGLES.map((a,i)=>`<i class="${has(it,'ctx'+(i+1))?'done':''} ${i>=PR.MIN?'opt':''}"></i>`).join('')}</div><p class="small muted" style="margin:6px 0 10px">${c<PR.MIN?`${PR.MIN-c} more required · clean background, good lighting`:c<PR.MAX?`Required met · up to ${PR.MAX-c} optional extras`:`All ${PR.MAX} angles taken`}</p>
-      <div class="ptiles ten">${PR.ANGLES.map((a,i)=>tile(it,by('ctx'+(i+1)),(i+1)+'. '+a.n,i>=PR.MIN)).join('')}</div>`, ck[1].ok);
+    h += sec(2,'Context',ctxSub, `<div class="pbar" aria-label="${ctxSub}">${PR.ANGLES.map((a,i)=>`<i class="${has(it,a.k)?'done':''} ${i>=PR.MIN?'opt':''}"></i>`).join('')}</div><p class="small muted" style="margin:6px 0 10px">${c<PR.MIN?`${PR.MIN-c} more required · clean background, good lighting`:c<PR.MAX?`Required met · 1 optional extra`:`All ${PR.MAX} angles taken`}</p>
+      <div class="ptiles ten">${PR.ANGLES.map((a,i)=>tile(it,by(a.k),(i+1)+'. '+a.n.replace(' (optional)',''),i>=PR.MIN)).join('')}</div>`, ck[1].ok);
     const bs=by('brand'), bsk=PR.skipped(it,bs);
     h += sec(3,'Brand','Logo close-up', `<div class="prow">${tile(it,bs,'Brand logo')}<div>${bsk?`<p class="small"><b>No brand logo</b> ${unskip('brand')}</p><label class="field"><span>Brand (if you know it)</span><input type="text" data-f="make" value="${esc(it.make)}" placeholder="Leave blank if unknown" autocomplete="off"></label>`:has(it,'brand')?'<p class="small muted">Logo photographed.</p>':`<p class="small muted">Zoom in on the brand name or emblem.</p>${skipBtn('brand','No brand logo')}`}</div></div>`, ck[2].ok);
     const ps=by('plate'), psk=PR.skipped(it,ps);
@@ -165,7 +166,8 @@ function protoPage(it){ const grp=it.type==='lot', all=PR.slots(it), by=k=>all.f
   } else { const parts=it.parts||[];
     h += sec(2,'Main items','High-value pieces, one at a time', parts.map((p,j)=>{ const nm=PR.partName(it,p,j), b=by(p.id+'-brand'), pl=by(p.id+'-plate');
       return `<div class="part"><div class="part-h"><b>Item ${j+1}</b><input type="text" data-part="${p.id}" data-pk="name" data-rr="1" value="${esc(p.name)}" placeholder="Name, e.g., Hobart mixer" aria-label="Main item ${j+1} name">${parts.length>1?`<button type="button" class="iconbtn" data-act="rmpart" data-id="${it.id}" data-p="${p.id}" aria-label="Remove main item ${j+1}">${I.x}</button>`:''}</div>
-       <div class="ptiles">${PR.PART_ANGLES.map((a,i)=>tile(it,by(p.id+'-'+(i+1)),a.n,i>0)).join('')}${tile(it,b,PR.skipped(it,b)?'No logo':'Brand logo')}${tile(it,pl,PR.skipped(it,pl)?'No plate':'Data plate')}</div>
+       <div class="prulerow">${PR.ruleHTML(PR.photoRule(it,p.id))}</div>
+       <div class="ptiles">${PR.PART_ANGLES.map((a,i)=>tile(it,by(p.id+'-'+a.s),a.n.replace(' (optional)',''),i>=PR.MIN)).join('')}${tile(it,b,PR.skipped(it,b)?'No logo':'Brand logo')}${tile(it,pl,PR.skipped(it,pl)?'No plate':'Data plate')}</div>
        <div class="row" style="margin:8px 0">${PR.skipped(it,b)?`<span class="small muted">No logo ${unskip(p.id+'-brand')}</span>`:has(it,b.k)?'':skipBtn(p.id+'-brand','No brand logo')}${PR.skipped(it,pl)?`<span class="small muted">No plate ${unskip(p.id+'-plate')}</span>`:has(it,pl.k)?'':skipBtn(p.id+'-plate','No plate')}</div>
        ${plateCard(it,p,p.id)}</div>`; }).join('')+`<button type="button" class="btn ghost sm block" data-act="addpart" data-id="${it.id}">${I.plus} Add main item</button>`, ck[1].ok&&ck[2].ok&&ck[3].ok);
     h += sec(5,'Scale','Wide overall group shot', `<div class="prow">${tile(it,by('group'),'Wide group shot')}<p class="small muted">Step back and get the whole lot in one frame — after the main pieces.</p></div>
@@ -186,7 +188,7 @@ LL.acts.nopower = async b => { const it=getItem(b.dataset.id); it.skip=it.skip||
   LL.save(); LL.toast('Doesn’t power on → Guarantee set to AS IS');
   if(location.hash.includes('/cam/') && location.hash.includes('/video')){ const n=PR.next(it,'video',true); LL.go(n?`#/sell/cam/${it.id}/${n.k}`:`#/sell/item/${it.id}/photos`,true); } else LL.render(true); };
 LL.acts.rmvideo = async b => { const it=getItem(b.dataset.id); await LL.photos.del(it.id,'video'); await LL.photos.del(it.id,'videoPoster'); delete it.photos.video; delete it.videoDur; delete it.videoMime; LL.save(); LL.render(true); };
-LL.acts.grouplot = b => { const it=getItem(b.dataset.id); it.type=b.checked?'lot':'item'; if(it.type==='lot' && !(it.parts||[]).length) it.parts=[{id:LL.uid().slice(0,5),name:''}]; if(it.type==='lot'&&it.cat==='other') it.cat='smallwares'; it.ai=null; it.aiConfirmed=false; LL.save(); LL.render(true); LL.toast(b.checked?'Group / bulk lot: main items, then a wide group shot':'Single item: 4+ angles, logo, plate, video'); };
+LL.acts.grouplot = b => { const it=getItem(b.dataset.id); it.type=b.checked?'lot':'item'; if(it.type==='lot' && !(it.parts||[]).length) it.parts=[{id:LL.uid().slice(0,5),name:''}]; if(it.type==='lot'&&it.cat==='other') it.cat='smallwares'; it.ai=null; it.aiConfirmed=false; LL.save(); LL.render(true); LL.toast(b.checked?'Group / bulk lot: 4–7 photos per main item, then a wide group shot':'Single item: 4–7 photos (4 angles + logo + plate), then video'); };
 LL.acts.addpart = b => { const it=getItem(b.dataset.id); it.parts=(it.parts||[]).concat({id:LL.uid().slice(0,5),name:''}); LL.save(); LL.render(true); };
 LL.acts.rmpart = async b => { const it=getItem(b.dataset.id); if(!confirm('Remove this main item and its photos?')) return; const pid=b.dataset.p; for(const s of PR.slots(it).filter(s=>s.part===pid)){ await LL.photos.del(it.id,s.k); delete it.photos[s.k]; } it.parts=it.parts.filter(p=>p.id!==pid); LL.save(); LL.render(true); };
 LL.acts.pskip = b => { const it=getItem(b.dataset.id); it.skip=it.skip||{}; it.skip[b.dataset.k]=true; LL.save(); LL.render(true); };
@@ -208,8 +210,16 @@ const drPrev = it => `<span>${esc(it.lot)}</span><span>${esc(S().profile.consign
 function bindDataRow(el,it){ const ta=el.querySelector('#descC'), pv=el.querySelector('#drprev');
   el.addEventListener('input',e=>{ const t=e.target; if(t===ta){ it.descC=ta.value; LL.save(); } else if(t.dataset.dc && !(it.descC&&it.descC.trim()) && ta){ ta.value=PR.descAuto(it); } if(pv) pv.innerHTML=drPrev(it); }); }
 LL.acts.descrebuild = b => { const it=getItem(b.dataset.id); it.descC=''; LL.save(); LL.render(true); };
-function finishWarn(it){ const m=PR.missing(it); return !m.length || confirm(`Lot #${it.lot} is missing: ${m.map(c=>c.detail).join(' · ')}.\n\nFinish anyway? You can come back to it later.`); }
-LL.acts.finishitem = b => { const it=getItem(b.dataset.id); if(finishWarn(it)) LL.go('#/sell'); };
+function finishWarn(it){ const short=photoShort(it);
+  if(short){ LL.toast(short.msg); LL.go(`#/sell/cam/${it.id}/${short.k}`); return false; }
+  const m=PR.missing(it); return !m.length || confirm(`Lot #${it.lot} is missing: ${m.map(c=>c.detail).join(' · ')}.\n\nFinish anyway? You can come back to it later.`); }
+/* 4 required angles per item (and per group-lot main piece) before an item can be finished or analyzed */
+function photoShort(it){ const pids = it.type==='lot' ? (it.parts||[]).map(p=>p.id) : [null];
+  for(const pid of pids){ const r=PR.photoRule(it,pid); if(r.reqDone<r.min){ const s=PR.slots(it).find(x=>x.step==='context' && x.req && (pid?x.part===pid:!x.part) && !has(it,x.k));
+    return {k:s.k, msg:`Add ${r.min-r.reqDone} more required photo${r.min-r.reqDone===1?'':'s'}${pid?' for '+s.pn:''} (${PR.ruleText(r)})`}; } }
+  return null; }
+LL.photoShort = photoShort;
+LL.acts.finishitem = (b,e) => { const it=getItem(b.dataset.id); e && e.preventDefault && e.preventDefault(); if(finishWarn(it)) LL.go('#/sell'); };
 function detailsHTML(it){ const idx=S().items.indexOf(it);
   return `<div class="pad">${dataRowHTML(it)}<div style="height:6px"></div>
    <div class="lbl">Quick-pick category</div><div class="chips wrap">${LL.cat.map(c=>`<button type="button" class="chip" aria-pressed="${it.cat===c.id}" data-act="setcat" data-id="${it.id}" data-v="${c.id}">${esc(c.label)}</button>`).join('')}</div>
@@ -257,8 +267,8 @@ LL.aiView = function(it){
    <div class="stickyfoot"><button class="btn ghost" style="flex:0 0 auto" data-act="runai" data-id="${it.id}" data-force="1">Re-run</button><button class="btn accent block" data-act="confirmai" data-id="${it.id}">${I.check} Looks right — confirm</button></div>`,
    mount(el){ bindFields(el,it); const sel=el.querySelector('select[data-f=cat]'); }};
 };
-/* photos sent to AI Describe: plate + logo + angles first, never the lot sticker (max 6) */
-function aiShots(it){ const sh=PR.shots(it).filter(s=>s.k!=='sticker'&&s.k!=='video'&&has(it,s.k)); const pri=s=>s.step==='specs'?0:s.k==='ctx1'||s.k==='group'?1:s.step==='brand'?2:3; return sh.slice().sort((a,b)=>pri(a)-pri(b)); }
+/* photos sent to AI Describe: data plate first (model/serial), then logo, then angles; never the lot sticker (server max 6) */
+function aiShots(it){ const sh=PR.shots(it).filter(s=>s.k!=='sticker'&&s.k!=='video'&&has(it,s.k)); const pri=s=>s.step==='specs'?0:s.step==='brand'?1:s.k==='ctx1'||s.k==='group'||/-1$/.test(s.k)?2:3; return sh.slice().sort((a,b)=>pri(a)-pri(b)); }
 LL.acts.share = b => { const it=getItem(b.dataset.id); it.repOnly=it.repOnly||{}; it.repOnly.share=b.checked; LL.save(); };
 LL.acts.runai = async b => { const it=getItem(b.dataset.id); if(!it || running.has(it.id)) return;
   if(b.dataset.force && it.ai && !confirm('Re-run AI Describe? This replaces the title, description and details above.')) return;
@@ -283,12 +293,13 @@ LL.views.cam = ({id,shot}) => {
   /* step header + counters */
   let counter='', extra='';
   if(cur.step==='context' && !cur.part){ const c=PR.ctxCount(it), extraN=Math.max(0,cur.i-PR.MIN);
-    const title = cur.i<=PR.MIN ? `Photo ${cur.i} of ${PR.MIN} required` : `Extra ${extraN} of ${PR.EXTRA} (optional)`;
-    counter = `<div class="pctr"><b>${title}</b><div class="pbar" aria-hidden="true">${PR.ANGLES.map((a,i)=>`<i class="${has(it,'ctx'+(i+1))?'done':''} ${i+1===cur.i?'cur':''} ${i>=PR.MIN?'opt':''}"></i>`).join('')}</div><span>${c<PR.MIN?`${PR.MIN-c} more required (min ${PR.MIN})`:c<PR.MAX?`Required met · up to ${PR.MAX-c} optional extras`:`All ${PR.MAX} angles taken`}</span></div>`;
+    const title = cur.i<=PR.MIN ? `Photo ${cur.i} of ${PR.MIN} required` : `Extra photo (optional) · ${PR.PHOTO_MAX} max`;
+    counter = `<div class="pctr"><b>${title}</b><div class="pbar" aria-hidden="true">${PR.ANGLES.map((a,i)=>`<i class="${has(it,a.k)?'done':''} ${i+1===cur.i?'cur':''} ${i>=PR.MIN?'opt':''}"></i>`).join('')}</div><span>${PR.ruleText(PR.photoRule(it))}${c<PR.MIN?` · ${PR.MIN-c} more required`:c<PR.MAX?' · 1 optional extra left':' · all angles in'}</span></div>`;
     if(c>=PR.MIN) extra = `<button class="xbtn go" data-x="doneangles">Done with angles ${I.chev}</button>`; }
   else if(cur.step==='context'){ const n=all.filter(s=>s.grp===cur.grp && has(it,s.k)).length;
-    counter = `<div class="pctr"><b>Main item ${cur.pj+1} of ${(it.parts||[]).length} · photo ${cur.i} of 1–${PR.PART_ANGLES.length}</b><span>${esc(cur.pn)}${cur.i>1?' · optional':''}</span></div>`;
-    if(n>=1) extra = `<button class="xbtn go" data-x="doneangles">Done with this item ${I.chev}</button>`; }
+    const pr=PR.photoRule(it,cur.part);
+    counter = `<div class="pctr"><b>Main item ${cur.pj+1} of ${(it.parts||[]).length} · ${cur.i<=PR.MIN?`photo ${cur.i} of ${PR.MIN} required`:'extra photo (optional)'}</b><span>${esc(cur.pn)} · ${PR.ruleText(pr)}</span></div>`;
+    if(pr.reqDone>=PR.MIN) extra = `<button class="xbtn go" data-x="doneangles">Done with this item ${I.chev}</button>`; }
   else if(cur.step==='bookmark') extra = `<button class="xbtn" data-act="digisticker" data-id="${it.id}">Use digital sticker instead</button>`;
   else if(cur.step==='brand') extra = `<button class="xbtn" data-x="skip">No brand logo</button>`;
   else if(cur.step==='specs') extra = `<button class="xbtn" data-x="skip">I don’t have a manufacturer plate</button>`;
