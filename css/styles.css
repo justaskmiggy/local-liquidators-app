@@ -719,3 +719,8 @@ code{font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:
 .bk-share h3{font-size:24px;font-weight:800;margin-bottom:4px}.bk-share .bk-batch{margin-top:10px;min-height:56px;font-size:18px}
 .bk-cam .bk-areas .chip{min-height:38px;font-size:15px;padding:0 13px}
 #overlay.bk-tr{background:transparent}
+
+/* bulk: items without a price */
+.bk-item.noprice{border-color:#f97316;box-shadow:0 0 0 2px rgba(249,115,22,.18)}
+.bk-need{margin-top:6px;font-size:13px;font-weight:700;color:#c2410c}
+.bk-needbar{margin:10px 16px 0;padding:10px 12px;border-radius:10px;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.45);font-size:14px}

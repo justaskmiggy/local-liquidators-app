@@ -8,7 +8,12 @@ const CFG = { endpoint: (window.LL_CONFIG && (window.LL_CONFIG.bulkEndpoint || w
 const COND = ['Like New','Good','Fair','Workhorse','Unknown'];
 const B = () => { const s=S(); if(!s.bulk) s.bulk = {job:'', area:'Kitchen', photos:[], seq:0, report:null, showComm:true}; if(s.bulk.showComm===undefined) s.bulk.showComm=true; return s.bulk; };
 const money = n => '$' + Math.round(n||0).toLocaleString('en-US');
-const rng = (a,b) => (Math.round(a)===Math.round(b)) ? money(a) : money(a)+'–'+money(b);
+const rng = (a,b) => (!(a>0) && !(b>0)) ? '—' : (Math.round(a)===Math.round(b)) ? money(a) : money(a)+'–'+money(b);
+// An item with no FB and no auction value has no price yet: never show it as $0, and block exports until it's priced.
+const unpriced = i => !(i.fb[1] > 0) && !(i.auc[1] > 0);
+const vr = (i,a,b) => unpriced(i) ? 'Needs price' : rng(a,b);
+const needPrice = rep => { const n = rep.items.filter(unpriced).length; if(!n) return false;
+  LL.toast(`${n} item${n===1?' needs':'s need'} a price. Tap the pencil to enter one (or delete it).`); const el = LL.$('.bk-item.noprice'); el && el.scrollIntoView({block:'center'}); return true; };
 const slug = s => (s||'walkthrough').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase() || 'walkthrough';
 
 /* ---------- IndexedDB photo store ---------- */
@@ -224,14 +229,15 @@ function itemCard(it, rep){ const tag = it.qty>1 ? `<span class="bk-q">×${it.qt
     <div class="row"><label class="field"><span>Qty</span><input type="number" inputmode="numeric" min="1" name="qty" value="${it.qty}"></label><label class="field"><span>Area</span><select name="area">${areasOf(rep.items).concat(AREAS).filter((a,i,s)=>s.indexOf(a)===i).map(a=>`<option ${a===it.area?'selected':''}>${esc(a)}</option>`).join('')}</select></label></div>
     <label class="field"><span>Condition</span><select name="condition">${COND.map(c=>`<option ${c===it.condition?'selected':''}>${c}</option>`).join('')}</select></label>
     <div class="lbl">Value each ($)</div>
-    <div class="row"><label class="field"><span>FB low</span><input type="number" inputmode="numeric" name="fb0" value="${it.fb[0]}"></label><label class="field"><span>FB high</span><input type="number" inputmode="numeric" name="fb1" value="${it.fb[1]}"></label></div>
-    <div class="row"><label class="field"><span>Auction low</span><input type="number" inputmode="numeric" name="auc0" value="${it.auc[0]}"></label><label class="field"><span>Auction high</span><input type="number" inputmode="numeric" name="auc1" value="${it.auc[1]}"></label></div>
+    <div class="row"><label class="field"><span>FB low</span><input type="number" inputmode="numeric" name="fb0" value="${it.fb[0]||''}" placeholder="Enter price"></label><label class="field"><span>FB high</span><input type="number" inputmode="numeric" name="fb1" value="${it.fb[1]||''}" placeholder="Enter price"></label></div>
+    <div class="row"><label class="field"><span>Auction low</span><input type="number" inputmode="numeric" name="auc0" value="${it.auc[0]||''}" placeholder="Enter price"></label><label class="field"><span>Auction high</span><input type="number" inputmode="numeric" name="auc1" value="${it.auc[1]||''}" placeholder="Enter price"></label></div>
     <div class="row"><button type="button" class="btn danger sm" data-act="bkdel" data-id="${it.id}">${I.trash} Delete</button><button type="submit" class="btn sm">${I.check} Save</button></div></form></div>`;
-  return `<div class="card bk-item" data-id="${it.id}"><div class="bk-ih"><div class="bk-it"><b>${esc(it.name)} ${tag}</b>${(it.brand||it.model)?`<small>${esc([it.brand,it.model].filter(Boolean).join(' '))}</small>`:''}</div>
+  return `<div class="card bk-item${unpriced(it)?' noprice':''}" data-id="${it.id}"><div class="bk-ih"><div class="bk-it"><b>${esc(it.name)} ${tag}</b>${(it.brand||it.model)?`<small>${esc([it.brand,it.model].filter(Boolean).join(' '))}</small>`:''}</div>
     <button class="iconbtn sm noprint" data-act="bkedit" data-id="${it.id}" aria-label="Edit ${esc(it.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button></div>
    <div class="bk-meta"><span class="bk-chip">${esc(it.condition)}</span><span class="bk-chip conf-${it.confidence}">${it.confidence} confidence</span>${it.photos.length?`<span class="bk-chip ph">${I.image.replace('<svg','<svg width="13" height="13"')} ${it.photos.join(', ')}</span>`:''}</div>
-   <div class="bk-vals"><div><small>FB Market</small><b>${rng(it.fb[0]*it.qty, it.fb[1]*it.qty)}</b></div><div><small>Auction</small><b>${rng(it.auc[0]*it.qty, it.auc[1]*it.qty)}</b></div><div><small>New${it.qty>1?' (each)':''}</small><b>${it.newRetail?'~'+money(it.newRetail):'—'}</b></div></div>
-   ${it.qty>1?`<p class="bk-each">Each: FB ${rng(it.fb[0],it.fb[1])} · Auction ${rng(it.auc[0],it.auc[1])}</p>`:''}
+   <div class="bk-vals"><div><small>FB Market</small><b>${vr(it, it.fb[0]*it.qty, it.fb[1]*it.qty)}</b></div><div><small>Auction</small><b>${vr(it, it.auc[0]*it.qty, it.auc[1]*it.qty)}</b></div><div><small>New${it.qty>1?' (each)':''}</small><b>${it.newRetail?'~'+money(it.newRetail):'—'}</b></div></div>
+   ${unpriced(it)?`<p class="bk-need">No value from the photos. Tap the pencil and enter a price.</p>`:''}
+   ${it.qty>1&&!unpriced(it)?`<p class="bk-each">Each: FB ${rng(it.fb[0],it.fb[1])} · Auction ${rng(it.auc[0],it.auc[1])}</p>`:''}
    ${it.basis?`<p class="bk-basis">${esc(it.basis)}</p>`:''}
    ${it.flags.length?`<ul class="bk-flags">${it.flags.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}</div>`; }
 LL.views.bulkreport = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#/sell/bulk', true); return {html:''}; }
@@ -244,6 +250,7 @@ LL.views.bulkreport = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#/
    <h2>${esc(rep.job || b.job || 'Walkthrough')}</h2><p>${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} · ${rep.photos} photos · ${t.n} lines · ${t.units} units</p>
    <div class="bk-sum"><div><small>FB Marketplace</small><b>${rng(t.fb[0],t.fb[1])}</b></div><div><small>Auction</small><b>${rng(t.auc[0],t.auc[1])}</b></div></div></div>
   ${banner}
+  ${rep.items.some(unpriced)?`<div class="bk-needbar" role="status"><b>${rep.items.filter(unpriced).length} ${rep.items.filter(unpriced).length===1?'item needs':'items need'} a price.</b> Enter one before you copy, download or print the report.</div>`:''}
   ${areasOf(rep.items).map(a => { const its = rep.items.filter(i => i.area===a), at = totals(its);
     return `<section class="bk-area"><div class="sec"><h2>${esc(a)}</h2><span class="small muted">${its.length} item${its.length===1?'':'s'} · auction ${rng(at.auc[0],at.auc[1])}</span></div><div class="bk-list">${its.map(i => itemCard(i, rep)).join('')}</div></section>`; }).join('')}
   <div class="pad noprint"><button class="btn ghost block sm" data-act="bkadd">${I.plus} Add an item the AI missed</button></div>
@@ -273,19 +280,19 @@ function asText(withPhotosNote){ const b = B(), rep = b.report; const t = rep ? 
   L.push(`${rep&&rep.job || b.job || 'Walkthrough'}: walkthrough ${rep ? (rep.source==='demo'?'(EXAMPLE ONLY, not from photos)':'(AI estimate)') : ''}`.trim());
   L.push(`${b.photos.length} photos: ` + areasOf(b.photos).map(a => `${a} ${b.photos.filter(p=>p.area===a).map(label).join(' ')}`).join(' | '));
   if(rep){ areasOf(rep.items).forEach(a => { L.push('', a.toUpperCase());
-      rep.items.filter(i => i.area===a).forEach(i => L.push(`- ${i.qty>1?i.qty+'x ':''}${i.name}${(i.brand||i.model)?' ('+[i.brand,i.model].filter(Boolean).join(' ')+')':''} | ${i.condition} | FB ${rng(i.fb[0]*i.qty,i.fb[1]*i.qty)} | Auction ${rng(i.auc[0]*i.qty,i.auc[1]*i.qty)}${i.photos.length?' | '+i.photos.join(','):''}${i.flags.length?' | Check: '+i.flags.join('; '):''}`)); });
+      rep.items.filter(i => i.area===a).forEach(i => L.push(`- ${i.qty>1?i.qty+'x ':''}${i.name}${(i.brand||i.model)?' ('+[i.brand,i.model].filter(Boolean).join(' ')+')':''} | ${i.condition} | ${unpriced(i)?'NEEDS PRICE':`FB ${rng(i.fb[0]*i.qty,i.fb[1]*i.qty)} | Auction ${rng(i.auc[0]*i.qty,i.auc[1]*i.qty)}`}${i.photos.length?' | '+i.photos.join(','):''}${i.flags.length?' | Check: '+i.flags.join('; '):''}`)); });
     L.push('', `TOTAL FB Marketplace ${rng(t.fb[0],t.fb[1])} | Auction ${rng(t.auc[0],t.auc[1])}`);
     if(b.showComm) L.push('LL commission: ' + RATES.map(r => `${r}% ${rng(t.auc[0]*r/100,t.auc[1]*r/100)}`).join(' | ')); }
   if(withPhotosNote) L.push('', 'Please research each item (models, used FBMP + auction values) from the attached photos.');
   return L.join('\n'); }
-LL.acts.bkcopy = async () => { const s = asText(false); try{ await navigator.clipboard.writeText(s); LL.toast('Copied: paste it anywhere'); }catch(e){ const ta = document.createElement('textarea'); ta.value = s; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); LL.toast('Copied'); } };
-LL.acts.bkcsv = () => { const b = B(), rep = b.report; const q = v => '"' + String(v ?? '').replace(/"/g,'""') + '"';
+LL.acts.bkcopy = async () => { if(needPrice(B().report)) return; const s = asText(false); try{ await navigator.clipboard.writeText(s); LL.toast('Copied: paste it anywhere'); }catch(e){ const ta = document.createElement('textarea'); ta.value = s; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); LL.toast('Copied'); } };
+LL.acts.bkcsv = () => { const b = B(), rep = b.report; if(needPrice(rep)) return; const q = v => '"' + String(v ?? '').replace(/"/g,'""') + '"';
   const head = ['Area','Item','Brand','Model','Qty','Condition','Confidence','Photos','New retail (each)','FBMP low (each)','FBMP high (each)','FBMP low (total)','FBMP high (total)','Auction low (each)','Auction high (each)','Auction low (total)','Auction high (total)','Basis','Check on site','Source'];
   const rows = rep.items.map(i => [i.area,i.name,i.brand,i.model,i.qty,i.condition,i.confidence,i.photos.join(' '),i.newRetail??'',i.fb[0],i.fb[1],i.fb[0]*i.qty,i.fb[1]*i.qty,i.auc[0],i.auc[1],i.auc[0]*i.qty,i.auc[1]*i.qty,i.basis,i.flags.join('; '),rep.source==='demo'?'Example only':'AI estimate']);
   const t = totals(rep.items); rows.push(['TOTAL','','','',t.units,'','','','','','',t.fb[0],t.fb[1],'','',t.auc[0],t.auc[1],'','','']);
   if(b.showComm) RATES.forEach(r => rows.push([`LL commission ${r}%`,'','','','','','','','','','','','','','',Math.round(t.auc[0]*r/100),Math.round(t.auc[1]*r/100),'','','']));
   LL.download(slug(rep.job||b.job) + '-walkthrough.csv', [head].concat(rows).map(r => r.map(q).join(',')).join('\r\n'), 'text/csv'); LL.toast('CSV downloaded'); };
-LL.acts.bkpdf = () => { editing = null; LL.render(true); setTimeout(() => window.print(), 250); };
+LL.acts.bkpdf = () => { if(needPrice(B().report)) return; editing = null; LL.render(true); setTimeout(() => window.print(), 250); };
 LL.acts.bkshare = async () => { const b = B(); if(!b.photos.length){ LL.toast('No photos yet'); return; }
   const text = asText(true), name = slug(b.job); const ov = LL.$('#overlay');
   ov.innerHTML = `<div class="bk-sheetwrap" data-x="close"><div class="bk-sheet bk-share" role="dialog" aria-label="Send to my assistant"><h3>Send to my assistant</h3><p class="small muted" id="bk-shmsg">Getting ${b.photos.length} photos ready…</p><div id="bk-shbtns"></div>
