@@ -127,7 +127,8 @@ LL.views.profile = () => { const p=S().profile, st=LL.sellStats(), ios=/iphone|i
   mount(el){ const c=el.querySelector('#pf-cid'); if(c) c.addEventListener('input',()=>{ S().profile.consignorId=c.value.trim(); LL.save(); }); }}; };
 LL.acts.install = async () => { if(!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt=null; LL.render(true); };
 LL.acts.exportjson = () => LL.download('speedy-list-ai-data.json', JSON.stringify(S(),null,2), 'application/json');
-LL.acts.resetall = async () => { if(!confirm('Erase all app data on this device?')) return; await LL.reset(); LL.applyTheme(); LL.go('#/welcome'); };
+LL.acts.resetall = async () => { if(!confirm('Erase all app data on this device?')) return; const nb = ((LL.state.bulk||{}).photos||[]).length;
+  if(nb && prompt(`This also erases ${nb} walkthrough photos stored only on this phone. Type DELETE to erase everything.`) !== 'DELETE'){ LL.toast('Nothing erased'); return; } if(LL.bulkStore) await LL.bulkStore.clear(); await LL.reset(); LL.applyTheme(); LL.go('#/welcome'); };
 window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); installEvt=e; if(parse().name==='profile') LL.render(true); });
 
 /* boot */

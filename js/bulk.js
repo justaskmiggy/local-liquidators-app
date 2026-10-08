@@ -18,7 +18,7 @@ const rng = (a,b) => (!(a>0) && !(b>0)) ? '—' : (Math.round(a)===Math.round(b)
 // An item with no FB and no auction value has no price yet: never show it as $0, and block exports until it's priced.
 const unpriced = i => !(i.fb[1] > 0) && !(i.auc[1] > 0);
 const vr = (i,a,b) => unpriced(i) ? 'Needs price' : rng(a,b);
-const needPrice = rep => { const n = rep.items.filter(unpriced).length; if(!n) return false;
+const needPrice = rep => { const n = rep.items.filter(i => unpriced(i) && !i.pending).length; if(!n) return false;
   LL.toast(`${n} item${n===1?' needs':'s need'} a price. Tap the pencil to enter one (or delete it).`); const el = LL.$('.bk-item.noprice'); el && el.scrollIntoView({block:'center'}); return true; };
 const slug = s => (s||'walkthrough').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase() || 'walkthrough';
 
@@ -32,31 +32,64 @@ const store = {
   async get(id){ try{ return await tx('readonly', s => s.get(id)); }catch(e){ return null; } },
   async del(id){ thumbs.delete(id); try{ await tx('readwrite', s => s.delete(id)); }catch(e){} },
   async clear(){ thumbs.clear(); try{ await tx('readwrite', s => s.clear()); }catch(e){} },
-  async init(){ try{ const d = await db(); await new Promise(res => { const t = d.transaction('ph'); const rq = t.objectStore('ph').openCursor();
-    rq.onsuccess = () => { const c = rq.result; if(c){ thumbs.set(c.key, c.value && c.value.thumb); c.continue(); } }; t.oncomplete = res; t.onerror = res; }); }catch(e){} }
+  async init(){ try{ const d = await db(); let okk = false; await new Promise(res => { const t = d.transaction('ph'); const rq = t.objectStore('ph').openCursor();
+    rq.onsuccess = () => { const c = rq.result; if(c){ thumbs.set(c.key, c.value && c.value.thumb); c.continue(); } }; t.oncomplete = () => { okk = true; res(); }; t.onerror = res; }); return okk; }catch(e){ return false; } }
 };
 LL.bulkStore = store;
-let ready = LL.bulkReady = store.init().then(() => { // drop metadata rows whose photo never made it to disk
-  const b = B(); const before = b.photos.length; b.photos = b.photos.filter(p => thumbs.has(p.id)); if(b.photos.length !== before) LL.save(); });
+let ready = LL.bulkReady = store.init().then(ok => { const b = B(); if(!ok) return; // storage didn't open: change nothing
+  // drop metadata rows whose photo never made it to disk (only when the photo store actually loaded)
+  if(thumbs.size){ const before = b.photos.length; b.photos = b.photos.filter(p => thumbs.has(p.id)); if(b.photos.length !== before) LL.save(); }
+  // RECOVER photos that are on disk but lost their list entry (e.g. app data reset): add them back under "Recovered"
+  const have = new Set(b.photos.map(p => p.id)), lost = [...thumbs.keys()].filter(id => !have.has(id)).sort();
+  lost.forEach(id => { const t = parseInt(String(id).slice(1, 9), 36); b.photos.push({id, n: nextN(b), area: 'Recovered', ts: t > 1.6e12 && t < 4e12 ? t : Date.now(), recovered: true}); });
+  if(lost.length){ LL.save(); console.info('[bulk] recovered', lost.length, 'photos'); }
+  repairNumbers();
+  try{ if(b.photos.length && navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){} }); // ask the browser not to evict walkthrough photos
+/* REPAIR (additive, nothing deleted): older builds could give several photos the same P-number. Keep the first,
+   renumber the rest (old number kept in p.origN). */
+function repairNumbers(){ const b = B(); const seen = new Set(); let fixed = 0; b.seq = Math.max(b.seq||0, b.photos.reduce((m, p) => Math.max(m, p.n||0), 0));
+  for(const p of b.photos){ if(!p.n || seen.has(p.n)){ if(p.origN == null) p.origN = p.n || 0; p.n = ++b.seq; fixed++; } seen.add(p.n); }
+  if(fixed){ if(b.report) b.report.stale = true; LL.save(); console.info('[bulk] renumbered', fixed, 'photos'); } return fixed; }
+/* Black-frame scan of existing photos (from the small thumbnails). Flags p.black = true; never deletes. */
+let scanP = null;
+const blackScan = LL.bulkBlackScan = () => scanP || (scanP = ready.then(async () => { const b = B(); let k = 0, dirty = 0;
+  for(const p of b.photos){ if(p.bk) continue; const u = thumbs.get(p.id); if(!u) continue;
+    try{ const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = u; }); p.black = isBlack(im, im.naturalWidth, im.naturalHeight); }catch(e){ p.black = false; }
+    p.bk = 1; dirty++; if(++k % 25 === 0){ LL.save(); await new Promise(r => setTimeout(r, 0)); } }
+  if(dirty) LL.save(); return b.photos.filter(p => p.black).length; }));
+ready.then(() => setTimeout(blackScan, 800));
+const usable = list => list.filter(p => !p.black);
 if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
 
 /* ---------- image helpers ---------- */
-const canvasURL = (src, w, h, max, q) => { const r = Math.min(1, max / Math.max(w, h)), c = document.createElement('canvas');
-  c.width = Math.round(w*r); c.height = Math.round(h*r); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', q); };
+/* one reusable canvas (mobile browsers cap total canvas memory; piles of throwaway canvases can render black) */
+let cv1 = null;
+const canvasURL = (src, w, h, max, q) => { const r = Math.min(1, max / Math.max(w, h)), c = cv1 || (cv1 = document.createElement('canvas'));
+  c.width = Math.round(w*r); c.height = Math.round(h*r); const x = c.getContext('2d'); x.drawImage(src, 0, 0, c.width, c.height); const u = c.toDataURL('image/jpeg', q); c.width = c.height = 1; return u; };
+/* solid-black frame check on a 24x24 sample (a stopped/detached camera grabs pure black) */
+let cvb = null;
+function isBlack(src, w, h){ try{ const c = cvb || (cvb = document.createElement('canvas')); c.width = 24; c.height = 24; const x = c.getContext('2d', {willReadFrequently:true}); x.drawImage(src, 0, 0, 24, 24);
+  const d = x.getImageData(0, 0, 24, 24).data; let sum = 0, max = 0; for(let i = 0; i < d.length; i += 4){ const l = .299*d[i] + .587*d[i+1] + .114*d[i+2]; sum += l; if(l > max) max = l; } return sum/(d.length/4) < 4 && max < 24; }catch(e){ return false; } }
 async function bitmapOf(file){ try{ return await createImageBitmap(file, {imageOrientation:'from-image'}); }catch(e){
   return await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); } }
-async function addPhoto(src, w, h, meta){
-  const b = B(); const id = 'b' + Date.now().toString(36) + LL.uid().slice(0,4); b.seq = (b.seq||0) + 1;
+/* One photo per call. ID + photo number are fixed synchronously at capture (no shared numbers), frames are
+   encoded right away, and saves are queued one at a time. Solid-black frames are refused (throws err.black). */
+let capQ = Promise.resolve();
+const nextN = b => { const top = b.photos.reduce((m, p) => Math.max(m, p.n||0), 0); b.seq = Math.max(b.seq||0, top) + 1; return b.seq; };
+function addPhoto(src, w, h, meta){
+  const b = B(); if(isBlack(src, w, h)) return Promise.reject(Object.assign(new Error('black frame'), {black:true}));
+  const id = 'b' + Date.now().toString(36) + LL.uid().slice(0,6), n = nextN(b);
   const rec = { full: canvasURL(src, w, h, 2048, .82), thumb: canvasURL(src, w, h, 360, .7) };
-  await store.put(id, rec);
-  b.photos.push(Object.assign({ id, n: b.seq, area: b.area || 'Kitchen', ts: Date.now() }, meta||{})); b.report && (b.report.stale = true); LL.save();
-  return id;
+  const ph = Object.assign({ id, n, area: b.area || 'Kitchen', ts: Date.now(), bk: 1 }, meta||{});
+  if(!b.photos.length){ try{ navigator.storage && navigator.storage.persist && navigator.storage.persist(); }catch(e){} }
+  const job = capQ.then(() => store.put(id, rec)).then(() => { b.photos.push(ph); b.report && (b.report.stale = true); LL.save(); return id; });
+  capQ = job.catch(() => {}); return job;
 }
 async function addFiles(files){
   files = [...files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/i.test(f.name)); if(!files.length) return 0;
   let n = 0; LL.toast(`Saving ${files.length} photo${files.length===1?'':'s'}…`);
-  for(const f of files){ try{ const bm = await bitmapOf(f); await addPhoto(bm, bm.width || bm.naturalWidth, bm.height || bm.naturalHeight); bm.close && bm.close(); n++; }catch(e){ console.warn('photo failed', e); } }
-  LL.toast(`${n} photo${n===1?'':'s'} saved on this phone`); return n;
+  let dark = 0; for(const f of files){ try{ const bm = await bitmapOf(f); try{ await addPhoto(bm, bm.width || bm.naturalWidth, bm.height || bm.naturalHeight); n++; } finally { bm.close && bm.close(); } }catch(e){ if(e && e.black) dark++; else console.warn('photo failed', e); } }
+  LL.toast(`${n} photo${n===1?'':'s'} saved on this phone${dark?` · ${dark} black frame${dark===1?'':'s'} skipped`:''}`); return n;
 }
 const label = p => 'P' + p.n;
 
@@ -72,7 +105,7 @@ function areaChips(cur, act){ return `<div class="chips bk-areas" role="group" a
 function grid(){ const b = B(); const rp = b.photos.filter(p=>!p.item); if(!rp.length) return `<div class="bk-empty">${I.grid}<h3>Snap the whole room</h3><p>Stand back, get everything in frame. 3–6 photos per room is plenty. Close-ups of data plates help the AI read models.</p></div>`;
   const groups = AREAS.concat([...new Set(rp.map(p=>p.area))].filter(a=>!AREAS.includes(a)));
   return groups.filter(a => rp.some(p => p.area===a)).map(a => { const ps = rp.filter(p => p.area===a);
-    return `<div class="bk-grp"><div class="bk-gh"><b>${esc(a)}</b><span>${ps.length} photo${ps.length===1?'':'s'}</span></div><div class="bk-grid">${ps.map(p => `<button class="bk-th" data-act="bkphoto" data-id="${p.id}" aria-label="Photo ${label(p)}, ${esc(p.area)}"><img src="${thumbs.get(p.id)||''}" alt=""><i>${label(p)}</i></button>`).join('')}</div></div>`; }).join(''); }
+    return `<div class="bk-grp"><div class="bk-gh"><b>${esc(a)}</b><span>${ps.length} photo${ps.length===1?'':'s'}${ps.some(p=>p.black)?` · ${ps.filter(p=>p.black).length} black skipped`:''}</span></div><div class="bk-grid">${ps.map(p => `<button class="bk-th${p.black?' black':''}" data-act="bkphoto" data-id="${p.id}" aria-label="Photo ${label(p)}, ${esc(p.area)}${p.black?' (black frame, skipped)':''}"><img src="${thumbs.get(p.id)||''}" alt="" loading="lazy"><i>${label(p)}${p.black?' · black':''}</i></button>`).join('')}</div></div>`; }).join(''); }
 /* Job details under JOB NAME: shared with the contact step (b.contact), so each prefills the other.
    Service level is REP ONLY (never rendered for sellers; no percentages seller-side). */
 const SERVICE = [['full','35% Full service',35],['seller','25% Seller-run',25],['unknown','Unknown / negotiate',null]];
@@ -99,18 +132,65 @@ LL.views.bulk = () => { const b = B(); if(b.mode==='items') return itemsView(); 
       <button class="btn accent block bk-big" data-act="bkcam">${I.camera} Take photos</button>
       <label class="btn ghost block bk-big bk-lib">${I.image} Add from Photos<input type="file" accept="image/*" multiple id="bk-lib"></label>
     </div>
-    <p class="hint center">Fastest: shoot with your iPhone Camera, then tap <b>Add from Photos</b> and select them all. Saved on this phone, works with no signal.</p>
+    <p class="hint center">Fastest: shoot with your phone’s Camera app, then tap <b>Add from Photos</b> and select them all. Saved on this phone, works with no signal.</p>
   </div>
   <div class="sec"><h2>${n} photo${n===1?'':'s'}</h2>${n&&isRep()?`<button class="link" data-act="bkshare">${I.share.replace('<svg','<svg width="16" height="16"')} Send to my assistant</button>`:''}</div>
   <div class="bk-photos">${grid()}</div>
+  ${exportBtn()}
   ${b.report?`<div class="pad"><a class="btn ghost block sm" href="${isRep()?'#/sell/bulk/report':b.report.lead?'#/sell/bulk/thanks':'#/sell/bulk/contact'}">${I.check} ${isRep()?'Open last report':b.report.lead?'Your inventory summary':'Finish: send to Miggy'} (${b.report.items.length} items)${b.report.stale?' · new photos since':''}</a></div>`:''}
   ${b.photos.length?`<div class="pad"><button class="btn danger sm block" data-act="bknew">${I.trash} Start a new walkthrough</button></div>`:''}
+  <p class="center small muted bk-ver">App version 18 · photos are stored on this phone</p>
   <div style="height:90px"></div>
   <div class="stickyfoot noprint"><button class="btn block bk-go" data-act="bkanalyze" ${n||b.items.length?'':'disabled'}>${I.sparkle} Analyze ${n||''} photo${n===1?'':'s'}${b.items.length?` + ${b.items.length} item${b.items.length===1?'':'s'}`:''}</button></div>`,
   mount(el){ const j = el.querySelector('#bk-job'); j.addEventListener('input', () => { B().job = j.value.trim(); LL.save(); }); bindJob(el);
     el.querySelector('#bk-lib').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; await addFiles(fs); LL.render(true); }); } }; };
+/* ---------- SAVE ALL PHOTOS: ZIPs of 25 (or share sheet), built one photo at a time from IndexedDB ----------
+   Works in seller and rep mode. Black frames are left out unless "include" is ticked. Nothing is deleted. */
+const EXP_CHUNK = 25;
+function exportList(includeBlack){ const b = B(); const areaIx = a => { const i = AREAS.indexOf(a); return i < 0 ? 99 : i; };
+  return b.photos.filter(p => includeBlack || !p.black).slice().sort((x, y) => (x.item ? 0 : 1) - (y.item ? 0 : 1) || (x.item||0) - (y.item||0) || areaIx(x.area) - areaIx(y.area) || (x.n||0) - (y.n||0)); }
+function exportName(p, idx){ const job = slug(B().job || (B().contact||{}).business || 'walkthrough').slice(0, 40);
+  if(p.item) return `${job}-item${String(p.item).padStart(2,'0')}-${SLOTS.findIndex(s => s.k===p.slot)+1}-${p.slot}-P${p.n}${p.black?'-black':''}.jpg`;
+  return `${job}-${slug(p.area||'other')}-${String(idx+1).padStart(3,'0')}-P${p.n}${p.black?'-black':''}.jpg`; }
+const b64bytes = dataUrl => { const bin = atob(dataUrl.split(',')[1]); const u = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
+async function chunkFiles(list, c){ const out = []; const part = list.slice(c*EXP_CHUNK, (c+1)*EXP_CHUNK);
+  for(let i = 0; i < part.length; i++){ const p = part[i], rec = await store.get(p.id); if(!rec || !rec.full) continue;
+    out.push({name: exportName(p, c*EXP_CHUNK + i), data: b64bytes(rec.full)}); } return out; }
+const zipName = (c, k) => `${slug(B().job || (B().contact||{}).business || 'walkthrough').slice(0,40)}-photos-${String(c+1).padStart(2,'0')}-of-${String(k).padStart(2,'0')}.zip`;
+LL.acts.bkexport = async () => { const b = B(); await ready; const ov = LL.$('#overlay');
+  ov.innerHTML = `<div class="bk-sheetwrap" data-x="close"><div class="bk-sheet bk-exportsheet" role="dialog" aria-label="Save all photos"><h3>${I.download} Save all photos</h3><p class="small muted" id="bk-exmsg">Checking photos…</p><div id="bk-exbody"></div><button class="btn block sm" style="margin-top:10px" data-x="close">Close</button></div></div>`;
+  ov.classList.add('on','bk-tr');
+  const nBlack = await blackScan(); let inc = false, done = new Set(b.exportDone || []), busy = false;
+  const draw = () => { const list = exportList(inc), k = Math.ceil(list.length / EXP_CHUNK);
+    ov.querySelector('#bk-exmsg').innerHTML = `${list.length} photo${list.length===1?'':'s'} in ${k} ZIP file${k===1?'':'s'} of up to ${EXP_CHUNK}. They save to your phone’s <b>Downloads</b> folder (Files app). Nothing is deleted from the app.`;
+    ov.querySelector('#bk-exbody').innerHTML = `${nBlack?`<label class="bk-exinc"><input type="checkbox" data-x="inc" ${inc?'checked':''}> Include ${nBlack} solid-black frame${nBlack===1?'':'s'} (camera glitch, normally skipped)</label>`:''}
+      <button class="btn accent block" data-x="all" ${busy?'disabled':''}>${I.download} Download all ${k} ZIP${k===1?'':'s'}</button>
+      <p class="hint" style="margin:6px 0 8px">If Chrome asks “Download multiple files?”, tap <b>Allow</b>. Or save them one at a time:</p>
+      <div class="bk-exlist">${Array.from({length:k}, (_, c) => { const a = c*EXP_CHUNK + 1, z = Math.min(list.length, (c+1)*EXP_CHUNK), key = (inc?'i':'') + c;
+        return `<div class="bk-exrow${done.has(key)?' done':''}"><span>${done.has(key)?I.check:''} ZIP ${c+1} · photos ${a}–${z}</span><button class="btn ghost sm" data-x="z${c}" ${busy?'disabled':''}>${I.download} ZIP</button>${navigator.share?`<button class="btn ghost sm" data-x="s${c}" ${busy?'disabled':''}>${I.share} Share</button>`:''}</div>`; }).join('')}</div>`; };
+  const mark = c => { done.add((inc?'i':'') + c); b.exportDone = [...done]; b.exportedAt = Date.now(); LL.save(); };
+  const one = async (c, how) => { const list = exportList(inc), k = Math.ceil(list.length / EXP_CHUNK); const msg = ov.querySelector('#bk-exmsg');
+    msg.textContent = `Preparing ZIP ${c+1} of ${k}…`; const files = await chunkFiles(list, c);
+    if(how === 'share'){ const fs = files.map(f => new File([f.data], f.name, {type:'image/jpeg'}));
+      if(navigator.canShare && navigator.canShare({files: fs})){ try{ await navigator.share({files: fs, title: `Photos ${c*EXP_CHUNK+1}–${c*EXP_CHUNK+fs.length}`}); mark(c); }catch(e){ if(e.name !== 'AbortError') LL.toast('Share failed: use ZIP instead'); } return; }
+      LL.toast('This phone can’t share that many photos at once: saving a ZIP instead'); }
+    const z = LL.exportLL.zip(files); const a = document.createElement('a'); a.href = URL.createObjectURL(z); a.download = zipName(c, k); document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); mark(c); };
+  draw();
+  ov.onclick = async e => { const x = e.target.closest('[data-x]'); if(!x) return; const k = x.dataset.x;
+    if(k === 'close'){ if(e.target !== x && !x.classList.contains('btn')) return; if(busy) return; ov.onclick = null; ov.classList.remove('on','bk-tr'); ov.innerHTML = ''; LL.render(true); return; }
+    if(k === 'inc'){ inc = x.checked; draw(); return; }
+    if(busy) return; busy = true; draw();
+    try{ if(k === 'all'){ const n = Math.ceil(exportList(inc).length / EXP_CHUNK); for(let c = 0; c < n; c++){ await one(c, 'zip'); draw(); await new Promise(r => setTimeout(r, 1500)); } LL.toast(`${n} ZIP${n===1?'':'s'} saved to Downloads`); }
+      else if(k[0] === 'z') await one(+k.slice(1), 'zip'); else if(k[0] === 's') await one(+k.slice(1), 'share'); }
+    catch(err){ console.warn(err); LL.toast('Couldn’t build that ZIP. Try again.'); }
+    busy = false; draw(); ov.querySelector('#bk-exmsg').textContent = 'Saved. Check Downloads (Files app). Tap a ZIP again if one is missing.'; };
+};
+const exportBtn = () => B().photos.length ? `<div class="pad"><button class="btn ghost block bk-savephotos" data-act="bkexport">${I.download} Save all photos to this phone (${B().photos.filter(p=>!p.black).length})${B().exportedAt?' · saved before':''}</button></div>` : '';
+
 LL.acts.bkarea = btn => { B().area = btn.dataset.v; LL.save(); LL.$$('[data-act=bkarea]').forEach(x => x.setAttribute('aria-pressed', x===btn)); };
-LL.acts.bknew = async () => { const b = B(); if(!confirm(`Clear ${b.photos.length} photos and the report from this phone? Send them to your assistant first if you still need them.`)) return;
+LL.acts.bknew = async () => { const b = B(); if(!confirm(`Clear ${b.photos.length} photos and the report from this phone? This can’t be undone.${b.exportedAt?'':'\n\nYou haven’t used “Save all photos” yet.'}`)) return;
+  if(b.photos.length > 20 && prompt(`To delete ${b.photos.length} photos for good, type DELETE`) !== 'DELETE'){ LL.toast('Nothing deleted'); return; }
   await store.clear(); Object.assign(b, {job:'', photos:[], seq:0, report:null, items:[], itemSeq:0, cur:null}); LL.save(); LL.render(); };
 
 /* photo sheet: big view, change area, delete, retake */
@@ -147,19 +227,19 @@ LL.views.bulkcam = () => { const b = B();
   mount(el){ let stream = null, busy = false; const video = el.querySelector('video'), fb = el.querySelector('.cam-fb');
     const upd = () => { const l = B().photos[B().photos.length-1]; el.querySelector('.bk-count b').textContent = B().photos.length; if(l) el.querySelector('.bk-last').innerHTML = `<img src="${thumbs.get(l.id)}" alt="">`; };
     const stop = () => { if(stream) stream.getTracks().forEach(t => t.stop()); stream = null; };
-    LL.cleanup.push(stop);
+    const ac = new AbortController(); LL.cleanup.push(stop, () => ac.abort()); // listeners on the shared #overlay die with this view (no stacked handlers)
     (async () => { if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ fb.hidden = false; return; }
       try{ stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}, width:{ideal:3840}, height:{ideal:2160}}, audio:false}); video.srcObject = stream; await video.play().catch(()=>{}); }
       catch(e){ fb.hidden = false; if(e.name==='NotAllowedError') el.querySelector('#bk-fbmsg').textContent = 'Camera permission is off for this site. Tap below to use the iPhone camera — each photo is saved right away.'; } })();
     const onFiles = async e => { const fs=[...e.target.files]; e.target.value=''; await addFiles(fs); upd(); };
     el.querySelector('#bk-fbin').addEventListener('change', onFiles); el.querySelector('#bk-fblib').addEventListener('change', onFiles);
-    el.addEventListener('click', async e => {
+    el.addEventListener('click', async e => { if(!video.isConnected) return;
       const a = e.target.closest('[data-a]'); if(a){ B().area = a.dataset.a; LL.save(); el.querySelectorAll('[data-a]').forEach(x => x.setAttribute('aria-pressed', x===a)); return; }
       const x = e.target.closest('[data-x]'); if(!x) return;
       if(x.dataset.x==='done'){ stop(); LL.go('#/sell/bulk', true); return; }
       if(x.dataset.x==='snap'){ if(busy || !video.videoWidth) return; busy = true; const f = el.querySelector('.bk-flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
-        try{ navigator.vibrate && navigator.vibrate(30); await addPhoto(video, video.videoWidth, video.videoHeight); upd(); }catch(err){ LL.toast('Could not save that photo — try again'); } busy = false; }
-    }); } }; };
+        try{ navigator.vibrate && navigator.vibrate(30); await addPhoto(video, video.videoWidth, video.videoHeight); upd(); }catch(err){ LL.toast(err && err.black ? 'Black frame skipped: hold steady and tap again' : 'Could not save that photo, try again'); } busy = false; }
+    }, {signal: ac.signal}); } }; };
 
 /* ---------- ITEM BY ITEM (default): 4–7 photos per item ----------
    Same rule as single items: 4 required angles + data plate + brand logo (+1 optional extra), 7 max.
@@ -223,8 +303,10 @@ function itemsView(){ const b = B(), items = b.items, bad = incomplete(), cur = 
   <div class="sec"><h2>${items.length} item${items.length===1?'':'s'}</h2>${b.photos.length&&isRep()?`<button class="link" data-act="bkshare">${I.share.replace('<svg','<svg width="16" height="16"')} Send to my assistant</button>`:''}</div>
   <div class="pad bk-items">${items.length ? items.slice().reverse().map(itemCardHTML).join('') : `<div class="bk-empty">${I.camera}<h3>Shoot your first item</h3><p>4 required angles + the data plate + the brand logo. Up to 7 photos per item.</p></div>`}</div>
   ${roomN?`<p class="pad small muted">Plus ${roomN} room-scan photo${roomN===1?'':'s'} (see Quick room scan).</p>`:''}
+  ${exportBtn()}
   ${b.report?`<div class="pad"><a class="btn ghost block sm" href="${isRep()?'#/sell/bulk/report':b.report.lead?'#/sell/bulk/thanks':'#/sell/bulk/contact'}">${I.check} ${isRep()?'Open last report':b.report.lead?'Your inventory summary':'Finish: send to Miggy'} (${b.report.items.length} items)${b.report.stale?' · new photos since':''}</a></div>`:''}
   ${b.photos.length||items.length?`<div class="pad"><button class="btn danger sm block" data-act="bknew">${I.trash} Start a new walkthrough</button></div>`:''}
+  <p class="center small muted bk-ver">App version 18 · photos are stored on this phone</p>
   <div style="height:90px"></div>
   <div class="stickyfoot noprint"><button class="btn block bk-go" data-act="bkanalyze" ${items.length||roomN?'':'disabled'}>${I.sparkle} ${bad.length?`Item ${bad[0].n}: ${irule(bad[0].n).reqDone<IMIN?`${IMIN-irule(bad[0].n).reqDone} more required`:'needs plate / logo'}`:`Analyze ${items.length} item${items.length===1?'':'s'}`}</button></div>`,
   mount(el){ const j = el.querySelector('#bk-job'); j.addEventListener('input', () => { B().job = j.value.trim(); LL.save(); }); bindJob(el);
@@ -234,7 +316,7 @@ async function addItemFiles(files, n){ files = [...files].filter(f => /^image\//
   const it = (n && itemBy(n)) || curItem() || newItem(); const open = SLOTS.filter(s => !slotPh(it.n, s.k));
   if(!open.length){ LL.toast(`Item ${it.n} already has ${IMAX} photos (the max). Delete one to swap it.`); return 0; }
   const use = files.slice(0, open.length); let k = 0;
-  for(const f of use){ try{ const bm = await bitmapOf(f); const s = open[k]; await addPhoto(bm, bm.width || bm.naturalWidth, bm.height || bm.naturalHeight, {item:it.n, slot:s.k, area:it.area}); delete (it.skip||{})[s.k]; bm.close && bm.close(); k++; }catch(e){ console.warn('photo failed', e); } }
+  for(const f of use){ try{ const bm = await bitmapOf(f); const s = open[k]; try{ await addPhoto(bm, bm.width || bm.naturalWidth, bm.height || bm.naturalHeight, {item:it.n, slot:s.k, area:it.area}); } finally { bm.close && bm.close(); } delete (it.skip||{})[s.k]; k++; }catch(e){ console.warn('photo failed', e); } }
   const r = irule(it.n), over = files.length - use.length;
   LL.toast(over ? `Max ${IMAX} photos per item: ${over} extra left out. Item ${it.n}: ${rtext(r)}` : `Item ${it.n}: ${rtext(r)}${r.reqDone<IMIN?` · ${IMIN-r.reqDone} more required`:''}`); LL.save(); return k; }
 LL.acts.bkskip = c => { const it = itemBy(c.dataset.n); if(!it) return; it.skip = it.skip || {}; if(c.checked) it.skip[c.dataset.k] = true; else delete it.skip[c.dataset.k]; LL.save(); LL.render(true); };
@@ -260,7 +342,7 @@ LL.views.bulkitem = r => { const b = B();
     <button class="shutter" aria-label="Take photo" data-x="snap" ${full?'disabled':''}></button>
     <button class="side bk-nextitem" data-x="nextitem"><span class="rbtn">${I.chev}</span><span>Next item</span></button></div></div>`,
   mount(el){ let stream = null, busy = false, slot = cur.k; const video = el.querySelector('video'), fb = el.querySelector('.cam-fb');
-    const stop = () => { if(stream) stream.getTracks().forEach(t => t.stop()); stream = null; }; LL.cleanup.push(stop);
+    const stop = () => { if(stream) stream.getTracks().forEach(t => t.stop()); stream = null; }; const ac = new AbortController(); LL.cleanup.push(stop, () => ac.abort());
     const upd = () => { if(!el.querySelector('#bi-count')) return; const r = irule(it.n), s = slotOf(slot), full = r.total >= IMAX;
       el.querySelector('#bi-count').textContent = rtext(r);
       el.querySelector('#bi-dots').innerHTML = SLOTS.map(x => `<i class="${slotPh(it.n,x.k)?'done':''} ${x.k===slot?'cur':''} ${x.req?'':'opt'}" title="${esc(x.n)}"></i>`).join('');
@@ -275,15 +357,17 @@ LL.views.bulkitem = r => { const b = B();
       const l = itemPh(it.n).slice(-1)[0]; if(l && thumbs.get(l.id)) el.querySelector('.bk-last').innerHTML = `<img src="${thumbs.get(l.id)}" alt="">`; };
     const advance = () => { const n = nextSlot(it.n, slot); slot = n ? n.k : (SLOTS.find(x => !slotPh(it.n,x.k)) || SLOTS[SLOTS.length-1]).k; upd(); };
     const save = async (src, w, h) => { const r = irule(it.n); if(r.total >= IMAX){ LL.toast(`${IMAX} photos max per item`); return; }
-      if(slotPh(it.n, slot)){ const old = slotPh(it.n, slot); await store.del(old.id); B().photos = B().photos.filter(p => p!==old); }
-      await addPhoto(src, w, h, {item:it.n, slot, area:it.area}); delete (it.skip||{})[slot]; LL.save(); advance(); };
+      const old = slotPh(it.n, slot); await addPhoto(src, w, h, {item:it.n, slot:'_new', area:it.area}); // new frame saved first, old one replaced only after
+      const nw = B().photos.find(p => p.item===it.n && p.slot==='_new'); if(nw) nw.slot = slot;
+      if(old){ await store.del(old.id); B().photos = B().photos.filter(p => p!==old); }
+      delete (it.skip||{})[slot]; LL.save(); advance(); };
     upd();
     (async () => { if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ fb.hidden = false; return; }
       try{ stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}, width:{ideal:3840}, height:{ideal:2160}}, audio:false}); video.srcObject = stream; await video.play().catch(()=>{}); }
       catch(e){ fb.hidden = false; if(e.name==='NotAllowedError') el.querySelector('#bk-fbmsg').textContent = 'Camera permission is off for this site. Tap below to use the phone camera: each photo goes into the next slot.'; } })();
-    el.querySelector('#bk-fbin').addEventListener('change', async e => { const f = [...e.target.files][0]; e.target.value = ''; if(!f) return; try{ const bm = await bitmapOf(f); await save(bm, bm.width||bm.naturalWidth, bm.height||bm.naturalHeight); bm.close && bm.close(); }catch(err){ LL.toast('Could not save that photo'); } });
+    el.querySelector('#bk-fbin').addEventListener('change', async e => { const f = [...e.target.files][0]; e.target.value = ''; if(!f) return; try{ const bm = await bitmapOf(f); try{ await save(bm, bm.width||bm.naturalWidth, bm.height||bm.naturalHeight); } finally { bm.close && bm.close(); } }catch(err){ LL.toast(err && err.black ? 'That photo is solid black: retake it' : 'Could not save that photo'); } });
     el.querySelector('#bk-fblib').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; await addItemFiles(fs, it.n); const n = nextSlot(it.n); slot = n ? n.k : slot; upd(); });
-    el.addEventListener('click', async e => { const x = e.target.closest('[data-x]'); if(!x) return; const k = x.dataset.x;
+    el.addEventListener('click', async e => { if(!video.isConnected) return; const x = e.target.closest('[data-x]'); if(!x) return; const k = x.dataset.x;
       if(k==='done'){ stop(); LL.go('#/sell/bulk', true); return; }
       if(k==='skipkey'){ it.skip = it.skip || {}; it.skip[slot] = true; LL.save(); LL.toast(`Item ${it.n}: ${slotOf(slot).key.toLowerCase()}`); advance(); return; }
       if(k==='extra'){ slot = 'extra'; upd(); return; }
@@ -293,76 +377,122 @@ LL.views.bulkitem = r => { const b = B();
           if(!ok){ slot = miss[0]; upd(); return; } it.skip = it.skip || {}; miss.forEach(q => it.skip[q] = true); LL.save(); }
         const nx = newItem(); stop(); LL.go(`#/sell/bulk/item/${nx.n}`, true); return; }
       if(k==='snap'){ if(busy || !video.videoWidth) return; busy = true; const f = el.querySelector('.bk-flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
-        try{ navigator.vibrate && navigator.vibrate(30); await save(video, video.videoWidth, video.videoHeight); }catch(err){ LL.toast('Could not save that photo — try again'); } busy = false; }
-    }); } }; };
+        try{ navigator.vibrate && navigator.vibrate(30); await save(video, video.videoWidth, video.videoHeight); }catch(err){ LL.toast(err && err.black ? 'Black frame skipped: hold steady and tap again' : 'Could not save that photo, try again'); } busy = false; }
+    }, {signal: ac.signal}); } }; };
 LL.bulkRule = { SLOTS, IMIN, IMAX, irule, rtext };
 
-/* ---------- analyze ---------- */
-let running = false;
+/* ---------- analyze ----------
+   Reliable for big walkthroughs (~500 photos): paced calls (5.5s apart), retries on 429 (honors Retry-After) and
+   network/5xx errors, every finished batch is kept in b.scan (localStorage) so a stop/crash/reload resumes where it
+   left off, photos downscaled to 1280px before sending, black frames skipped, screen kept awake. Partial results
+   are reported with "not analyzed yet: Miggy will confirm" lines. Rep mode never substitutes the example report. */
+let running = false, stopReq = false, wakeLock = null, lastCall = 0;
+const PACE = +(localStorage.getItem('ll.pace') || 5500); // test hook only; default 5.5s between AI calls
+const wakeOn = async () => { try{ if('wakeLock' in navigator && !wakeLock && document.visibilityState === 'visible'){ wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } }catch(e){} };
+const wakeOff = () => { try{ wakeLock && wakeLock.release(); }catch(e){} wakeLock = null; };
+document.addEventListener('visibilitychange', () => { if(running && document.visibilityState === 'visible') wakeOn(); });
+const hashIds = a => { const s = a.join(','); let h = 5381; for(let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36) + '.' + a.length; };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+async function callAI(body, ui){
+  for(let t = 1; ; t++){
+    const gap = lastCall + PACE - Date.now(); if(gap > 0) await ui.wait(gap);
+    if(stopReq) throw Object.assign(new Error('stopped'), {stopped:true});
+    lastCall = Date.now(); let r = null; const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), CFG.timeoutMs);
+    try{ r = await fetch(CFG.endpoint, {method:'POST', headers:{'Content-Type':'application/json'}, signal: ctrl.signal, body: JSON.stringify(body)}); }catch(e){ r = null; } finally { clearTimeout(to); }
+    if(r && r.ok){ const j = await r.json().catch(() => null); if(j && Array.isArray(j.items)) return j; }
+    const st = r ? r.status : 0;
+    if(st === 429 && t <= 8){ let ra = +(r.headers.get('Retry-After') || 0); if(!ra){ const j = await r.json().catch(() => null); ra = (j && +j.retryAfter) || 0; }
+      ra = Math.min(120, Math.max(5, ra || 20)); await ui.wait(ra * 1000, `Server busy: retrying in {s}s. Everything done so far is kept.`); continue; }
+    if((st === 0 || st >= 500 || (r && r.ok)) && t <= 3){ const w = 6000 * t; await ui.wait(w, !navigator.onLine ? 'No signal: retrying in {s}s…' : `Connection hiccup: retry ${t} of 3 in {s}s…`); continue; }
+    throw Object.assign(new Error('backend ' + st), {status: st});
+  } }
+async function imgOf(p){ const rec = await store.get(p.id); if(!rec) return null; const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = rec.full; });
+  const u = canvasURL(img, img.naturalWidth, img.naturalHeight, 1280, .72); img.src = ''; return u; }
+const areaIx = a => { const i = AREAS.indexOf(a); return i < 0 ? 99 : i; };
+const roomPhotos = b => usable(b.photos.filter(p => !p.item)).sort((x, y) => areaIx(x.area) - areaIx(y.area) || String(x.area).localeCompare(String(y.area)) || x.n - y.n);
+const itemsWithPh = b => b.items.filter(x => usable(itemPh(x.n)).length);
+const itemShots = n => usable(AI_ORDER.map(k => slotPh(n, k)).filter(Boolean));
+/* plan: reuse every finished batch whose photo list is unchanged */
+function plan(b){ const sc = b.scan = b.scan || {}; const old = (sc.room && sc.room.batches) || [];
+  const ids = roomPhotos(b).map(p => p.id); const batches = [];
+  for(let i = 0; i < ids.length; i += CFG.batch){ const part = ids.slice(i, i + CFG.batch), k = part.join(',');
+    batches.push(old.find(x => x.st === 'ok' && x.ids.join(',') === k) || {ids: part, st: ''}); }
+  sc.room = {batches}; sc.items = sc.items || {};
+  const units = itemsWithPh(b).map(it => { const key = hashIds(itemShots(it.n).map(p => p.id)); const prev = sc.items[it.n];
+    if(!prev || prev.key !== key) sc.items[it.n] = {key, st: ''}; return {kind:'item', it, rec: sc.items[it.n]}; });
+  return units.concat(batches.map((bt, i) => ({kind:'room', bt, i, of: batches.length}))); }
+async function runAll(b, ui){ const units = plan(b); LL.save(); const total = units.length; let fails = 0, done = units.filter(u => (u.rec || u.bt).st === 'ok').length;
+  ui.prog(done, total, done ? `Resuming: ${done} of ${total} batches already done` : 'Starting…');
+  for(let x = 0; x < units.length; x++){ const u = units[x], rec = u.rec || u.bt; if(rec.st === 'ok') continue; if(stopReq) break;
+    let images = [], body;
+    if(u.kind === 'item'){ const it = u.it, ps = itemShots(it.n);
+      ui.prog(done, total, `Batch ${x+1} of ${total} · item ${it.n} (${ps.length} photos)`);
+      for(const p of ps){ const d = await imgOf(p).catch(() => null); if(d) images.push({ id: label(p), area: `${it.area} · item ${it.n} · ${slotOf(p.slot).n}`.slice(0,40), dataUrl: d }); }
+      body = {mode:'bulk', job: `${(b.job||'Walkthrough').slice(0,30)} | ITEM ${it.n}: ALL photos = ONE unit`, images}; }
+    else { const ps = u.bt.ids.map(id => b.photos.find(p => p.id === id)).filter(Boolean);
+      ui.prog(done, total, `Batch ${x+1} of ${total} · ${ps[0] ? esc(ps[0].area) : ''} photos ${ps.map(label).slice(0,1)}–${ps.map(label).slice(-1)}`);
+      for(const p of ps){ const d = await imgOf(p).catch(() => null); if(d) images.push({ id: label(p), area: p.area, dataUrl: d }); }
+      body = {mode:'bulk', job: b.job, images}; }
+    if(!images.length){ rec.st = 'ok'; rec.items = []; done++; continue; }
+    try{ const j = await callAI(body, ui); rec.items = j.items.slice(0, 40); rec.notes = String(j.notes||'').slice(0, 300); rec.st = 'ok'; rec.at = Date.now(); done++; fails = 0; }
+    catch(e){ if(e.stopped) break; rec.st = 'fail'; rec.err = e.status || 0; if(++fails >= 3){ ui.prog(done, total, 'The AI isn’t answering right now. Stopping and keeping what’s done.'); await wait(1500); break; } }
+    images = body = null; LL.save(); ui.prog(done, total); }
+  return {done, total}; }
+const nmz = s => String(s||'').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function merge(list){ const out = [], rank = {high:3, medium:2, low:1};
+  const k = i => { const mod = nmz(i.model).replace(/ /g, ''); return mod.length >= 3 ? `${i.area}|m|${nmz(i.brand)}|${mod}` : `${i.area}|n|${nmz(i.brand + ' ' + i.name).replace(/(\w{3,})s\b/g, '$1')}`; };
+  for(const it of list){ const m = out.find(o => k(o) === k(it));
+    if(!m){ out.push(it); continue; }
+    m.qty = Math.max(m.qty, it.qty); m.photos = [...new Set(m.photos.concat(it.photos))].slice(0, 12);
+    if(!m.brand && it.brand) m.brand = it.brand; if(!m.model && it.model) m.model = it.model; if(m.newRetail == null && it.newRetail != null) m.newRetail = it.newRetail;
+    if((rank[it.confidence]||0) > (rank[m.confidence]||0) || (!m.auc[1] && it.auc[1])){ m.auc = it.auc; m.fb = it.fb; m.confidence = it.confidence; if(it.basis) m.basis = it.basis; if(it.condition !== 'Unknown') m.condition = it.condition; }
+    m.flags = [...new Set(m.flags.concat(it.flags))].slice(0, 4); }
+  return out; }
+const pendingItem = (o) => { const x = norm(Object.assign({qty:1, confidence:'low'}, o)); x.pending = true; return x; };
+/* build the report from whatever finished (never invents values) */
+function assemble(b){ const sc = b.scan || {}, out = [], notes = []; let ok = 0, all = 0, left = 0;
+  for(const it of itemsWithPh(b)){ const ps = itemShots(it.n), r = (sc.items||{})[it.n]; all++;
+    if(r && r.st === 'ok'){ ok++; if(r.notes) notes.push(`Item ${it.n}: ${r.notes}`);
+      const lines = (r.items||[]).map(norm); const main = lines.slice().sort((a,c) => (c.auc[1]||c.fb[1]) - (a.auc[1]||a.fb[1]))[0] || norm({name:`Item ${it.n}`, confidence:'low'});
+      main.area = it.area; main.photos = ps.map(label); main.itemNo = it.n;
+      const sk = it.skip || {}; if(sk.plate) main.flags = ['No data plate photo: confirm model/serial'].concat(main.flags).slice(0,4); if(sk.brand && !main.brand) main.flags = ['No brand logo photo'].concat(main.flags).slice(0,4);
+      out.push(main); }
+    else { left += ps.length; const x = pendingItem({name:`Item ${it.n}`, area: it.area, photos: ps.map(label), flags:['Not analyzed yet: Miggy will confirm']}); x.itemNo = it.n; out.push(x); } }
+  const bs = (sc.room && sc.room.batches) || [], room = [], pend = {};
+  for(const bt of bs){ all++; if(bt.st === 'ok'){ ok++; room.push(...(bt.items||[])); if(bt.notes) notes.push(bt.notes); }
+    else bt.ids.forEach(id => { const p = b.photos.find(q => q.id === id); if(p){ (pend[p.area] = pend[p.area] || []).push(label(p)); left++; } }); }
+  out.push(...merge(room.map(norm)));
+  Object.keys(pend).forEach(a => out.push(pendingItem({name:`${a}: ${pend[a].length} photo${pend[a].length===1?'':'s'} not analyzed yet`, area:a, photos: pend[a].slice(0, 12), flags:['Not analyzed yet: Miggy will confirm']})));
+  const black = b.photos.filter(p => p.black).length;
+  return { source: ok ? 'ai' : 'none', at: Date.now(), job: b.job, photos: b.photos.length - black, black, mode: b.mode, items: out,
+    notes: notes.join(' ').slice(0, 1500), partial: ok < all ? {done: ok, total: all, photosLeft: left} : null }; }
 LL.acts.bkanalyze = async () => { const b = B(); if(running || (!b.photos.length && !b.items.length)) return;
   if(b.mode==='items'){ const bad = incomplete(); if(bad.length){ const it = bad[0], r = irule(it.n);
       if(r.reqDone < IMIN){ LL.toast(`Item ${it.n} needs ${IMIN-r.reqDone} more required photo${IMIN-r.reqDone===1?'':'s'} (${rtext(r)})`); LL.$('#bk-item-'+it.n)?.scrollIntoView({block:'center'}); return; }
       if(!confirm(`${bad.length} item${bad.length===1?' has':'s have'} no data plate or brand logo photo (item ${bad.map(x=>x.n).join(', ')}). Mark them "No plate / No logo" and analyze anyway?`)){ LL.$('#bk-item-'+it.n)?.scrollIntoView({block:'center'}); return; }
-      bad.forEach(x => { const rr = irule(x.n); x.skip = x.skip || {}; if(rr.plate==='need') x.skip.plate = true; if(rr.brand==='need') x.skip.brand = true; }); LL.save(); }
-    if(!b.items.some(x => itemPh(x.n).length) && !b.photos.some(p => !p.item)){ LL.toast('No photos yet'); return; } }
-  else if(!b.photos.some(p => !p.item)){ LL.toast('No room photos yet'); return; }
-  running = true; await ready;
-  const ov = LL.$('#overlay'); const tn = b.photos.slice(0, 9).map(p => `<div><img src="${thumbs.get(p.id)||''}" alt=""></div>`).join('');
-  ov.innerHTML = `<div class="bk-analyzing"><div class="scan"><div class="imgs">${tn}</div><p id="bk-step">Looking at your photos…</p></div>
-    <div class="bk-steps"><div data-s="0" class="on"><i class="spin"></i>Spotting every item in ${b.photos.length} photo${b.photos.length===1?'':'s'}</div><div data-s="1"><i></i>Reading brands &amp; model plates</div><div data-s="2"><i></i>${isRep()?'Researching used values: Marketplace &amp; auction':'Estimating new and used values'}</div><div data-s="3"><i></i>Building your report</div></div>
-    <p class="small center muted" style="margin-top:14px">Keep this screen open. Your photos stay saved on this phone.</p></div>`;
+      bad.forEach(x => { const rr = irule(x.n); x.skip = x.skip || {}; if(rr.plate==='need') x.skip.plate = true; if(rr.brand==='need') x.skip.brand = true; }); LL.save(); } }
+  if(!b.items.some(x => itemPh(x.n).length) && !b.photos.some(p => !p.item)){ LL.toast('No photos yet'); return; }
+  running = true; stopReq = false; await ready;
+  const ov = LL.$('#overlay'); const tn = usable(b.photos).slice(0, 9).map(p => `<div><img src="${thumbs.get(p.id)||''}" alt=""></div>`).join('');
+  ov.innerHTML = `<div class="bk-analyzing"><div class="scan"><div class="imgs">${tn}</div><p id="bk-step">Checking photos…</p></div>
+    <div class="bk-prog" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i id="bk-bar"></i></div><p class="bk-progtxt" id="bk-ptxt"></p>
+    <p class="small center muted" style="margin-top:14px">Keep this screen open (it stays awake). Finished batches are saved: if it stops, tap Analyze again to resume.</p>
+    <button class="btn ghost block bk-stop" id="bk-stop">Stop and keep what’s done</button></div>`;
   ov.classList.remove('bk-tr'); ov.classList.add('on');
-  const step = (i, txt) => { ov.querySelectorAll('[data-s]').forEach(d => { const k=+d.dataset.s; d.className = k<i?'done':k===i?'on':''; d.querySelector('i').className = k<i?'ok':k===i?'spin':''; }); if(txt) ov.querySelector('#bk-step').textContent = txt; };
-  let rep;
-  try{ rep = b.mode==='items' ? await runItems(b, step) : await runReal(b, step); }
-  catch(e){ console.info('[Bulk] backend unavailable:', e.message); rep = isRep() ? await runDemo(b, step, e) : sellerFallback(b); }
-  step(4); if(b.report && b.report.lead) rep.prevLead = b.report.lead; b.report = rep; LL.save(); running = false;
-  await new Promise(r => setTimeout(r, 400)); ov.classList.remove('on'); ov.innerHTML = ''; LL.go(isRep() ? '#/sell/bulk/report' : '#/sell/bulk/contact');
+  ov.onclick = e => { if(e.target.closest('#bk-stop')){ stopReq = true; const s = ov.querySelector('#bk-stop'); if(s){ s.disabled = true; s.textContent = 'Stopping after this batch…'; } } };
+  let last = [0, 1];
+  const ui = { prog(d, t, msg){ last = [d, t]; const bar = ov.querySelector('#bk-bar'); if(bar) bar.style.width = Math.round(100 * d / Math.max(1, t)) + '%';
+      const pt = ov.querySelector('#bk-ptxt'); if(pt) pt.textContent = `${d} of ${t} batch${t===1?'':'es'} done`; if(msg){ const s = ov.querySelector('#bk-step'); if(s) s.innerHTML = msg; } },
+    async wait(ms, msg){ const end = Date.now() + ms; while(Date.now() < end && !stopReq){ if(msg){ const s = ov.querySelector('#bk-step'); if(s) s.textContent = msg.replace('{s}', Math.ceil((end - Date.now())/1000)); } await wait(Math.min(500, end - Date.now())); } } };
+  wakeOn(); const nb = await blackScan(); if(nb) ui.prog(0, 1, `${nb} black frame${nb===1?'':'s'} skipped`);
+  try{ await runAll(b, ui); }catch(e){ console.warn('[Bulk] analyze stopped:', e && e.message); }
+  wakeOff(); ov.onclick = null;
+  const rep = assemble(b); if(b.report && b.report.lead) rep.prevLead = b.report.lead; if(b.report && b.report.updates) rep.updates = b.report.updates;
+  b.report = rep; LL.save(); running = false;
+  ui.prog(last[0], last[1], rep.partial ? `Done for now: ${rep.partial.done} of ${rep.partial.total} batches. Tap Analyze again to finish the rest.` : 'Building your report…');
+  await wait(rep.partial ? 1600 : 400); ov.classList.remove('on'); ov.innerHTML = '';
+  LL.go(isRep() ? '#/sell/bulk/report' : '#/sell/bulk/contact');
 };
-async function imgOf(p){ const rec = await store.get(p.id); if(!rec) return null; const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = rec.full; });
-  return canvasURL(img, img.naturalWidth, img.naturalHeight, 1280, .72); }
-const wait = ms => new Promise(r => setTimeout(r, ms));
-/* item-by-item: one AI call per item (<=7 photos, data plate first so the model/serial gets read), paced under the 12/min server limit */
-async function runItems(b, step){ const list = b.items.filter(x => itemPh(x.n).length); const out = []; let notes = [], ok = 0, room = [];
-  for(let i = 0; i < list.length; i++){ const it = list[i], ps = AI_ORDER.map(k => slotPh(it.n, k)).filter(Boolean);
-    step(i ? 1 : 0, `Reading item ${it.n} (${i+1} of ${list.length})…`);
-    const images = []; for(const p of ps){ const d = await imgOf(p); if(d) images.push({ id: label(p), area: `${it.area} · item ${it.n} · ${slotOf(p.slot).n}`.slice(0,40), dataUrl: d }); }
-    const job = `${(b.job||'Walkthrough').slice(0,30)} | ITEM ${it.n}: ALL photos = ONE unit`;
-    let j = null, status = 0;
-    for(let attempt = 0; attempt < 2 && !j; attempt++){
-      const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), CFG.timeoutMs);
-      try{ const r = await fetch(CFG.endpoint, {method:'POST', headers:{'Content-Type':'application/json'}, signal: ctrl.signal, body: JSON.stringify({mode:'bulk', job, images})}); status = r.status;
-        if(r.ok){ const x = await r.json(); if(x && Array.isArray(x.items)) j = x; } }
-      catch(e){ status = status || 0; } finally { clearTimeout(to); }
-      if(!j && status===429){ step(1, `Speedy AI is busy. Waiting a moment before item ${it.n}…`); await wait(20000); }
-      else if(!j) break; }
-    if(!j){ if(!ok && i===0) throw Object.assign(new Error('backend ' + status), {status}); // nothing worked: labeled example report
-      out.push(norm({name:`Item ${it.n}`, area:it.area, qty:1, confidence:'low', photos:ps.map(label), flags:['AI couldn’t finish this item. Tap Analyze again or enter a price.']})); continue; }
-    ok++; if(j.notes) notes.push(`Item ${it.n}: ${j.notes}`);
-    const lines = j.items.map(norm); const main = lines.slice().sort((a,c) => (c.auc[1]||c.fb[1]) - (a.auc[1]||a.fb[1]))[0] || norm({name:`Item ${it.n}`, confidence:'low'});
-    main.area = it.area; main.photos = ps.map(label); main.itemNo = it.n;
-    const sk = it.skip || {}; if(sk.plate) main.flags = ['No data plate photo: confirm model/serial'].concat(main.flags).slice(0,4); if(sk.brand && !main.brand) main.flags = ['No brand logo photo'].concat(main.flags).slice(0,4);
-    out.push(main);
-    if(list.length > 10 && i < list.length - 1) await wait(5200); }
-  const roomPh = b.photos.filter(p => !p.item);
-  if(roomPh.length){ try{ const rr = await runReal(b, step, roomPh); room = rr.items; if(rr.notes) notes.push(rr.notes); }catch(e){ notes.push('Room-scan photos could not be read this time.'); } }
-  step(2, 'Researching values…');
-  return { source:'ai', at: Date.now(), job: b.job, photos: b.photos.length, mode:'items', items: out.concat(room), notes: notes.join(' ') }; }
-async function runReal(b, step, only){
-  const ph = (only || b.photos.filter(p => !p.item)).slice(); const items = []; let notes = [];
-  for(let i = 0; i < ph.length; i += CFG.batch){
-    const part = ph.slice(i, i + CFG.batch); step(i ? 1 : 0, `Looking at photos ${i+1}–${i+part.length} of ${ph.length}…`);
-    const images = [];
-    for(const p of part){ const d = await imgOf(p); if(d) images.push({ id: label(p), area: p.area, dataUrl: d }); }
-    const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), CFG.timeoutMs);
-    let r; try{ r = await fetch(CFG.endpoint, {method:'POST', headers:{'Content-Type':'application/json'}, signal: ctrl.signal, body: JSON.stringify({mode:'bulk', job: b.job, images})}); } finally { clearTimeout(to); }
-    if(!r.ok) throw Object.assign(new Error('backend ' + r.status), {status: r.status});
-    const j = await r.json(); if(!j || !Array.isArray(j.items)) throw new Error('bad json');
-    items.push(...j.items); if(j.notes) notes.push(j.notes);
-  }
-  step(2, 'Researching values…');
-  return { source:'ai', at: Date.now(), job: b.job, photos: ph.length, items: merge(items.map(norm)), notes: notes.join(' ') };
-}
 const num = v => { v = +v; return Number.isFinite(v) && v >= 0 ? Math.round(v) : 0; };
 function norm(x){ const o = { id: LL.uid(), name: String(x.name||'Item').slice(0,90), brand: String(x.brand||'').slice(0,40), model: String(x.model||'').slice(0,40),
   qty: Math.max(1, Math.round(+x.qty||1)), condition: COND.includes(x.condition) ? x.condition : 'Unknown', area: String(x.area||'Other').slice(0,40),
@@ -370,8 +500,6 @@ function norm(x){ const o = { id: LL.uid(), name: String(x.name||'Item').slice(0
   newRetail: x.newRetail==null ? null : num(x.newRetail), fb:[num(x.fbLow), num(x.fbHigh)], auc:[num(x.aucLow), num(x.aucHigh)], basis: String(x.basis||'').slice(0,240),
   flags: (Array.isArray(x.flags)?x.flags:[]).map(s=>String(s).slice(0,80)).slice(0,4) };
   o.fb.sort((a,b)=>a-b); o.auc.sort((a,b)=>a-b); return o; }
-function merge(list){ const out = []; const k = i => [i.area, (i.brand+' '+i.model+' '+i.name).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()].join('|');
-  for(const it of list){ const m = out.find(o => k(o)===k(it)); if(m){ m.qty = Math.max(m.qty, it.qty); m.photos = [...new Set(m.photos.concat(it.photos))]; } else out.push(it); } return out; }
 
 /* DEMO: realistic bakery/cafe example, mapped onto the areas + photo numbers actually taken. Clearly labeled. */
 const DEMO_ITEMS = [
@@ -472,16 +600,16 @@ LL.views.bulkcontact = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#
         show((ex && ex.message && ex.user ? ex.message : 'That didn’t go through. Check your signal and tap Try again.') + ` Or text Miggy at ${MIGGY.phone}.`); } }); } }; };
 async function smallPhoto(p, max){ const rec = await store.get(p.id); if(!rec) return null; const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = rec.full; });
   return canvasURL(img, img.naturalWidth, img.naturalHeight, max||720, .7); }
-async function sendLead(b, contact, hp){ const rep = b.report, t = totals(rep.items), st = sellerTotals(rep.items);
+async function sendLead(b, contact, hp, opts){ opts = opts || {}; const rep = b.report, t = totals(rep.items), st = sellerTotals(rep.items);
   /* photos for Miggy: per item the front + data plate first, then the rest, max 30 */
   const pick = []; const firsts = rep.items.map(i => (i.photos||[]).map(byLabel).filter(Boolean));
   firsts.forEach(ps => { const f = ps.find(p => p.slot==='front') || ps[0]; if(f) pick.push(f); });
   firsts.forEach(ps => { const pl = ps.find(p => p.slot==='plate'); if(pl && !pick.includes(pl)) pick.push(pl); });
-  b.photos.forEach(p => { if(!pick.includes(p)) pick.push(p); });
-  const photos = []; for(const p of pick.slice(0, 30)){ const d = await smallPhoto(p, 720).catch(() => null); if(d) photos.push({name:`${p.item?'item'+p.item+'-'+p.slot:slug(p.area)}-${label(p)}.jpg`, dataUrl:d}); }
+  usable(b.photos).forEach(p => { if(!pick.includes(p)) pick.push(p); });
+  const photos = []; for(const p of pick.filter(p => !p.black).slice(0, 30)){ const d = await smallPhoto(p, 720).catch(() => null); if(d) photos.push({name:`${p.item?'item'+p.item+'-'+p.slot:slug(p.area)}-${label(p)}.jpg`, dataUrl:d}); }
   let repPdf = ''; try{ const pdf = await reportPDF({rep:true, comm:false, q:.7}); if(pdf.size < 5.5e6) repPdf = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(''); fr.readAsDataURL(pdf); }); }catch(e){ console.info('[lead] pdf', e); }
   const deal = dealScore(rep.items, contact);
-  const body = { company_site: hp||'', job: b.job, mode: b.mode, aiSource: rep.source, photoCount: b.photos.length, contact, service: isRep() ? svcOf()[1] : '', deal: {score: deal.score, reason: deal.reason}, repPdf,
+  const body = { company_site: hp||'', job: b.job, mode: b.mode, aiSource: rep.source, photoCount: usable(b.photos).length, blackFrames: b.photos.length - usable(b.photos).length, partial: rep.partial || null, updateOf: opts.updateOf || '', contact, service: isRep() ? svcOf()[1] : '', deal: {score: deal.score, reason: deal.reason}, repPdf,
     totals: {newTotal: st.nw, aucLow: t.auc[0], aucHigh: t.auc[1], fbLow: t.fb[0], fbHigh: t.fb[1]},
     items: rep.items.map(i => ({itemNo:i.itemNo||null, name:i.name, brand:i.brand, model:i.model, qty:i.qty, condition:i.condition, area:i.area, newRetail:i.newRetail||0, aucLow:i.auc[0], aucHigh:i.auc[1], fbLow:i.fb[0], fbHigh:i.fb[1], reserve:reserveOf(i), photos:i.photos, flags:i.flags})),
     photos };
@@ -490,6 +618,15 @@ async function sendLead(b, contact, hp){ const rep = b.report, t = totals(rep.it
   let j = null; try{ j = await r.json(); }catch(e){}
   if(!r.ok || !j || !j.ok) throw Object.assign(new Error((j && j.error) || 'lead ' + r.status), {user: !!(j && j.error)});
   return j; }
+LL.acts.bkresend = async btn => { if(!isRep()) return; const b = B(), rep = b.report, c = b.contact || {}; if(!rep) return;
+  if(!c.name && !c.phone && !c.email){ LL.toast('No seller contact on this walkthrough'); return; }
+  if(rep.partial && !confirm(`${rep.partial.photosLeft} photos aren’t analyzed yet. Send the updated report anyway? (You can send again after Resume.)`)) return;
+  if(!rep.partial && !confirm(`Send the updated report (${rep.items.length} lines) to Miggy at justaskmiggy@gmail.com? Nothing is sent to the seller.`)) return;
+  btn.disabled = true; const t0 = btn.innerHTML; btn.textContent = 'Building PDF and sending…';
+  try{ const prev = rep.lead || rep.prevLead; const j = await sendLead(b, c, '', {updateOf: (prev && prev.id) || 'rep-mode'});
+    rep.updates = (rep.updates||[]).concat({id: j.id, at: Date.now(), notified: j.notified}); if(!rep.lead) rep.lead = {id: j.id, at: Date.now(), notified: j.notified}; rep.stale = false; LL.save();
+    LL.toast('Updated report sent to Miggy (seller not contacted)'); LL.render(true); }
+  catch(e){ btn.disabled = false; btn.innerHTML = t0; LL.toast(e && e.user ? 'Not sent: ' + e.message : 'Couldn’t send: check signal and try again'); } };
 const TIPS = [
   ['Clean it up','Degrease cooking equipment, wipe down stainless, and clean door gaskets and filters. Clean equipment photographs better and bids higher.'],
   ['Empty and clear','Empty reach-ins, coolers and shelves so buyers see the full unit and its condition.'],
@@ -528,6 +665,7 @@ LL.views.bulkthanks = () => { const b = B(), rep = b.report; if(!rep || !rep.lea
   <section class="sl-hero"><div class="sl-brand light"><img src="assets/logo.jpg" alt="LocalLiquidators.com" width="150" height="35"><span>Just Ask Miggy × LocalLiquidators.com</span></div>
    <div class="sl-check">${I.check}</div><h2>Thank you${first?', '+esc(first):''}!</h2><p>Miggy will be in touch within 24 hours.</p>
    <p class="sl-sub">Your ${rep.items.length} item${rep.items.length===1?'':'s'} and photos were sent to Miggy. Questions before then? Text Miggy at <a href="sms:${MIGGY.sms}">${MIGGY.phone}</a>.</p></section>
+  ${rep.partial||rep.source==='none'?`<div class="bk-partial" role="note">${rep.partial?`${rep.partial.photosLeft} photo${rep.partial.photosLeft===1?'':'s'} still being reviewed: <b>Miggy will confirm</b> those values.`:'Miggy is reviewing your photos and will confirm the values.'}</div>`:''}
   <div class="pad"><div class="card pad sl-tot"><div class="lbl">Your inventory · estimated value</div>
     <div class="sl-vals big"><div><small>Est. value NEW</small><b>${st.nw>0?'~'+money(st.nw):'Miggy will confirm'}</b>${st.nw>0&&st.nwMissing?`<em>${st.nwMissing} item${st.nwMissing===1?'':'s'} still to price</em>`:''}</div><div><small>Est. value USED</small><b>${st.used[1]>0?rng(st.used[0],st.used[1]):'Miggy will confirm'}</b></div></div>
     <p class="small muted" style="margin-top:8px">NEW = about what it would cost to replace. USED = what we valued it at for auction. Photo-based estimates, not an appraisal or a guarantee. Miggy confirms everything with you.</p></div></div>
@@ -734,7 +872,11 @@ async function openLead(el, arg){ const m = /^([a-f0-9]{16})\.([a-f0-9]{32})$/.e
   if(!m) return say('<p>That report link looks incomplete.</p>');
   if(!isRep()){ try{ sessionStorage.setItem('ll.pendingLead', arg); }catch(e){} return say('<h2>Rep mode needed</h2><p class="muted">Turn on rep mode on this phone with your rep link, then open this report link again.</p>'); }
   const b = B(); if(b.report && b.report.remote && b.report.remote.id===m[1]){ LL.go('#/sell/bulk/report', true); return; }
-  if((b.photos.length || b.report) && !confirm('Replace the walkthrough on this phone with this seller’s report? (Send or export the current one first if you still need it.)')){ LL.go('#/sell/bulk', true); return; }
+  const own = b.photos.filter(p => !p.remote).length; // photos shot on THIS phone: never wiped by loading a lead link
+  if(own) return say(`<h2>Your walkthrough is protected</h2><p>This phone has a walkthrough with <b>${own} photos</b> taken here. Loading a seller report link would replace them, so it wasn’t loaded.</p>
+    <p class="muted">To work on this walkthrough, open it below (rep mode is on). To load a different seller’s report, use another phone, or first tap <b>Save all photos</b>, then <b>Start a new walkthrough</b>.</p>
+    <a class="btn accent block" href="#/sell/bulk${b.report?'/report':''}">Open this phone’s walkthrough</a>`);
+  if(b.report && !confirm('Replace the report on this phone with this seller’s report?')){ LL.go('#/sell/bulk', true); return; }
   say('<p class="muted"><span class="spin"></span> Loading the seller’s report…</p>');
   let j = null; try{ const res = await fetch(`${LEAD_URL}?id=${m[1]}&k=${m[2]}`); j = await res.json(); if(!res.ok || !j.ok) throw new Error(j && j.error || res.status); }
   catch(e){ return say(`<p>Couldn’t load that report (${esc(String(e.message||e))}). Check your signal and tap the link again.</p>`); }
@@ -777,7 +919,12 @@ LL.views.bulkreport = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#/
   if(!isRep()){ LL.go(rep.lead ? '#/sell/bulk/thanks' : '#/sell/bulk/contact', true); return {html:''}; }
   const t = totals(rep.items), demo = rep.source==='demo', d = new Date(rep.at);
   const banner = demo ? `<div class="bk-demo" role="note"><b>Example only</b> ${rep.why==='offline'?'You were offline, so this is an example bakery report, not read from your photos. Re-run Analyze with signal.':'Speedy AI couldn’t be reached, so this is an example bakery report, not read from your photos. Tap Analyze again.'} Or tap <b>Send to my assistant</b>.</div>`
-    : `<div class="bk-ai" role="note"><b>AI estimate</b> from your ${rep.photos} photos. Photo-based, not an appraisal. Check the flagged items on site.</div>`;
+    : rep.source==='none' ? `<div class="bk-demo" role="note"><b>Not analyzed yet</b> The AI couldn’t be reached, so nothing below is valued yet (no example data). Your photos are safe on this phone. Tap <b>Resume analysis</b>.</div>`
+    : `<div class="bk-ai" role="note"><b>AI estimate</b> from your ${rep.photos} photos${rep.black?` (${rep.black} black frames skipped)`:''}. Photo-based, not an appraisal. Check the flagged items on site.</div>`;
+  const partial = (rep.partial || rep.source==='none') ? `<div class="bk-partial" role="status"><b>${rep.partial?`Analyzed ${rep.partial.done} of ${rep.partial.total} batches.`:'Analysis not finished.'}</b> ${rep.partial?`${rep.partial.photosLeft} photo${rep.partial.photosLeft===1?'':'s'} not analyzed yet (listed as “Miggy will confirm”).`:''} Finished batches are kept.
+    <button class="btn accent block sm" style="margin-top:8px" data-act="bkanalyze">${I.sparkle} Resume analysis</button></div>` : '';
+  const resend = (b.contact && (b.contact.name || b.contact.phone || b.contact.email)) ? `<div class="pad noprint"><button class="btn accent block" data-act="bkresend">${I.share} Send updated report to Miggy</button>
+    <p class="hint center" style="margin-top:6px">Emails the new values + rep PDF to justaskmiggy@gmail.com. Nothing goes to the seller.${(rep.updates||[]).length?` Last sent ${new Date(rep.updates[rep.updates.length-1].at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}.`:''}</p></div>` : '';
   const cm = commOf(rep.items), st = sellerTotals(rep.items), c = b.contact || {}, deal = dealScore(rep.items, c);
   const comm = `<div class="card pad bk-comm"><div class="bk-commh"><div class="lbl">Commission (rep only) · ${esc(svcOf()[1])}</div><label class="bk-rate"><span class="sr-only">Commission rate</span><select id="bk-rate" aria-label="Commission rate">${RATE_OPTS.map(r => `<option value="${r}" ${r===cm.rate?'selected':''}>${r}%</option>`).join('')}</select></label></div>
     <div class="bk-trow"><span>Auction total (hammer)</span><b>${rng(cm.gross[0], cm.gross[1])}</b></div>
@@ -796,9 +943,12 @@ LL.views.bulkreport = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#/
    <h2>${esc(rep.job || b.job || 'Walkthrough')}</h2><p>${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} · ${rep.photos} photos · ${t.n} lines · ${t.units} units</p>
    <div class="bk-sum four"><div><small>New</small><b>${st.nw>0?'~'+money(st.nw):'—'}</b></div><div><small>Used</small><b>${rng(st.used[0],st.used[1])}</b></div><div><small>FB Marketplace</small><b>${rng(t.fb[0],t.fb[1])}</b></div><div><small>Auction</small><b>${rng(t.auc[0],t.auc[1])}</b></div></div></div>
   ${banner}
+  ${partial}
+  ${resend}
+  ${exportBtn()}
   ${dealCard}
   ${sellerCard}
-  ${rep.items.some(unpriced)?`<div class="bk-needbar" role="status"><b>${rep.items.filter(unpriced).length} ${rep.items.filter(unpriced).length===1?'item needs':'items need'} a price.</b> Enter one before you copy, download or print the report.</div>`:''}
+  ${rep.items.some(i => unpriced(i) && !i.pending)?`<div class="bk-needbar" role="status"><b>${rep.items.filter(i => unpriced(i) && !i.pending).length} ${rep.items.filter(i => unpriced(i) && !i.pending).length===1?'item needs':'items need'} a price.</b> Enter one before you copy, download or print the report.</div>`:''}
   ${areasOf(rep.items).map(a => { const its = rep.items.filter(i => i.area===a), at = totals(its);
     return `<section class="bk-area"><div class="sec"><h2>${esc(a)}</h2><span class="small muted">${its.length} item${its.length===1?'':'s'} · auction ${rng(at.auc[0],at.auc[1])}</span></div><div class="bk-list">${its.map(i => itemCard(i, rep)).join('')}</div></section>`; }).join('')}
   <div class="pad noprint"><button class="btn ghost block sm" data-act="bkadd">${I.plus} Add an item the AI missed</button></div>

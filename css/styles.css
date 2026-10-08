@@ -831,3 +831,16 @@ code{font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:
 .bk-jobf{margin-top:2px}
 .bk-svcnote{background:var(--surface-2);border-radius:12px;padding:8px 12px;margin:-4px 0 12px;color:var(--text-2)}
 .bk-svcnote p{margin:4px 0;line-height:1.35}
+/* save-all-photos + black frames + analyze progress */
+.bk-th.black img{opacity:.25}.bk-th.black i{background:#991b1b}
+.bk-savephotos{border:2px solid var(--accent,#f97316)}
+.bk-exportsheet{max-height:86vh;overflow:auto}
+.bk-exinc{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:4px 0 10px}
+.bk-exlist{display:grid;gap:6px}
+.bk-exrow{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:6px 8px;border:1px solid var(--line);border-radius:10px;font-size:14px}
+.bk-exrow span{flex:1}.bk-exrow.done span{color:#16a34a;font-weight:700}.bk-exrow svg{width:16px;height:16px;vertical-align:-3px}
+.bk-prog{height:10px;border-radius:6px;background:rgba(255,255,255,.18);overflow:hidden;margin:10px 0 6px}.bk-prog i{display:block;height:100%;background:#f97316;width:0;transition:width .4s}
+.bk-progtxt{font-size:14px;opacity:.9;text-align:center}
+.bk-stop{margin-top:12px}
+.bk-partial{margin:10px 16px;padding:10px 12px;border-radius:12px;background:#fff7ed;border:1px solid #fdba74;color:#7c2d12;font-size:14px}
+.bk-exportsheet h3{display:flex;align-items:center;gap:8px}.bk-exportsheet h3 svg{width:22px;height:22px;flex:none}
