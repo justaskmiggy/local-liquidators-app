@@ -31,7 +31,7 @@ LL.LOTS = [
    newPrice = typical retail for the same item new; usedRange = typical used-market range; comps = sample comparables.
    A live build would fill these from the AI pass (server/analyze-core.js -> newPrice/usedRange/comps) backed by a web
    search or pricing API. Never shown on the seller side, and never on recent results (those show the actual winning bid). */
-const NEW='Restaurant supply retailer', DEALER='Used equipment dealer', MKT='Online marketplace';
+const NEW='Restaurant supply retailer', DEALER='Used equipment dealer', MKT='Online used listing';
 const V = (np,lo,hi,c) => ({newPrice:np, usedRange:{low:lo,high:hi}, comps:c.map(([src,kind,price])=>({src,kind,price})), valueSource:'sample'});
 const VALUES = {
   l1:V(17500,4500,7500,[[NEW,'new',17450],[DEALER,'used',6900],[MKT,'used',4800]]),

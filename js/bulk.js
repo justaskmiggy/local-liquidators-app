@@ -75,7 +75,7 @@ function grid(){ const b = B(); const rp = b.photos.filter(p=>!p.item); if(!rp.l
     return `<div class="bk-grp"><div class="bk-gh"><b>${esc(a)}</b><span>${ps.length} photo${ps.length===1?'':'s'}</span></div><div class="bk-grid">${ps.map(p => `<button class="bk-th" data-act="bkphoto" data-id="${p.id}" aria-label="Photo ${label(p)}, ${esc(p.area)}"><img src="${thumbs.get(p.id)||''}" alt=""><i>${label(p)}</i></button>`).join('')}</div></div>`; }).join(''); }
 LL.views.bulk = () => { const b = B(); if(b.mode==='items') return itemsView(); const n = b.photos.filter(p=>!p.item).length;
   return {html:`${LL.modeToggle('bulk')}${bulkModeSeg('rooms')}
-  <section class="bk-hero"><div><span class="badge acc">Bulk walkthrough</span><h2>Shoot rooms, not items.</h2><p>${isRep()?'AI lists everything it sees and prices it for Facebook Marketplace and auction.':'AI lists everything it sees. Miggy reviews it and gets back to you within 24 hours.'}</p></div></section>
+  <section class="bk-hero"><div><span class="badge acc">Bulk walkthrough</span><h2>Shoot rooms, not items.</h2><p>${isRep()?'AI lists everything it sees and estimates what it’s worth at auction. Rep mode adds the full value breakdown.':'AI lists everything it sees and estimates what it’s worth at auction. Miggy reviews it and gets back to you within 24 hours.'}</p></div></section>
   <div class="pad bk-form">
     <label class="field"><span>Job name</span><input type="text" id="bk-job" value="${esc(b.job)}" placeholder="e.g. Husson Bakery - MD" autocomplete="off" enterkeyhint="done"></label>
     <div class="lbl">Area for new photos</div>${areaChips(b.area,'bkarea')}
@@ -193,7 +193,7 @@ function itemsView(){ const b = B(), items = b.items, bad = incomplete(), cur = 
   const startHref = cur && !irule(cur.n).ok ? `#/sell/bulk/item/${cur.n}` : '#/sell/bulk/item/new';
   const roomN = b.photos.filter(p=>!p.item).length;
   return {html:`${LL.modeToggle('bulk')}${bulkModeSeg('items')}
-  <section class="bk-hero"><div><span class="badge acc">Bulk · item by item</span><h2>4–7 photos per item.</h2><p>Front, side, back, inside, then the <b>data plate</b> and <b>brand logo</b>. 7 max. ${isRep()?'AI reads each item and prices it for Facebook Marketplace and auction.':'AI reads each item, then Miggy gets back to you within 24 hours.'}</p></div></section>
+  <section class="bk-hero"><div><span class="badge acc">Bulk · item by item</span><h2>4–7 photos per item.</h2><p>Front, side, back, inside, then the <b>data plate</b> and <b>brand logo</b>. 7 max. ${isRep()?'AI reads each item and estimates what it’s worth at auction. Rep mode adds the full value breakdown.':'AI reads each item and estimates what it’s worth at auction, then Miggy gets back to you within 24 hours.'}</p></div></section>
   <div class="pad bk-form">
     <label class="field"><span>Job name</span><input type="text" id="bk-job" value="${esc(b.job)}" placeholder="e.g. Husson Bakery - MD" autocomplete="off" enterkeyhint="done"></label>
     <div class="lbl">Area for the next item</div>${areaChips(b.area,'bkarea')}
