@@ -1,5 +1,5 @@
 /* Service worker: precache the app shell (cache-first), network-first for navigations, never touch /api/ */
-const VER = 'speedy-list-v16';
+const VER = 'speedy-list-v17';
 const SHELL = ['./','index.html','manifest.webmanifest','config.js','css/styles.css','js/core.js','js/vision.js','js/ai.js','js/data.js','js/protocol.js','js/sell.js','js/export.js','js/buy.js','js/bulk.js','js/app.js',
   'assets/logo.jpg','assets/logo-icon.png','icons/icon-192.png','icons/icon-512.png','icons/icon-maskable-512.png','icons/apple-touch-icon.png','icons/favicon-32.png',
   'assets/brand/roadrunner-tile-64.png','assets/brand/roadrunner-icon-192.png','assets/brand/roadrunner-icon-512.png','assets/brand/roadrunner-maskable-512.png','assets/brand/roadrunner-apple-touch-180.png','assets/brand/roadrunner-favicon-32.png','assets/brand/roadrunner-buy-tile-64.png','assets/brand/roadrunner-buy-tile-192.png','assets/brand/roadrunner-buy-tile.png','assets/fonts/RacingSansOne-Regular.woff2',

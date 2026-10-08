@@ -73,11 +73,27 @@ function grid(){ const b = B(); const rp = b.photos.filter(p=>!p.item); if(!rp.l
   const groups = AREAS.concat([...new Set(rp.map(p=>p.area))].filter(a=>!AREAS.includes(a)));
   return groups.filter(a => rp.some(p => p.area===a)).map(a => { const ps = rp.filter(p => p.area===a);
     return `<div class="bk-grp"><div class="bk-gh"><b>${esc(a)}</b><span>${ps.length} photo${ps.length===1?'':'s'}</span></div><div class="bk-grid">${ps.map(p => `<button class="bk-th" data-act="bkphoto" data-id="${p.id}" aria-label="Photo ${label(p)}, ${esc(p.area)}"><img src="${thumbs.get(p.id)||''}" alt=""><i>${label(p)}</i></button>`).join('')}</div></div>`; }).join(''); }
+/* Job details under JOB NAME: shared with the contact step (b.contact), so each prefills the other.
+   Service level is REP ONLY (never rendered for sellers; no percentages seller-side). */
+const SERVICE = [['full','35% Full service',35],['seller','25% Seller-run',25],['unknown','Unknown / negotiate',null]];
+const svcOf = () => SERVICE.find(x => x[0]===B().service) || SERVICE[0];
+function jobFields(){ const c = B().contact || {};
+  return `<div class="bk-jobf">
+    <label class="field"><span>Business name</span><input type="text" id="bk-biz" value="${esc(c.business||'')}" autocomplete="organization" placeholder="Business name"></label>
+    <label class="field"><span>Address</span><input type="text" id="bk-addr" value="${esc(c.address||'')}" autocomplete="street-address" placeholder="Street, city, state"></label>
+    <div class="row"><label class="field"><span>Email</span><input type="email" id="bk-email" inputmode="email" value="${esc(c.email||'')}" autocomplete="email" placeholder="name@business.com"></label>
+     <label class="field"><span>Lease ending</span><input type="date" id="bk-lease" value="${esc(c.leaseEnd||'')}"></label></div>
+    ${isRep()?`<label class="field bk-svc"><span>Service level <small class="muted">(rep only)</small></span><select id="bk-svc">${SERVICE.map(x => `<option value="${x[0]}" ${x[0]===svcOf()[0]?'selected':''}>${x[1]}</option>`).join('')}</select></label>
+    <div class="bk-svcnote small"><p><b>Full service (35%)</b> = I handle the inventory, photos, listing, showing, buyer communication and pickup.</p><p><b>Seller-run (25%)</b> = the seller does the inventory through the app, showing and pickup.</p><p><b>High-value items and multiple stores (or 100+ items)</b> = rate is negotiable.</p></div>`:''}</div>`; }
+function bindJob(el){ const b = B(); const c = () => (b.contact = b.contact || {});
+  [['#bk-biz','business'],['#bk-addr','address'],['#bk-email','email'],['#bk-lease','leaseEnd']].forEach(([sel,k]) => { const i = el.querySelector(sel); if(i) i.addEventListener(i.type==='date'?'change':'input', () => { c()[k] = i.value.trim(); LL.save(); }); });
+  const sv = el.querySelector('#bk-svc'); if(sv && isRep()) sv.addEventListener('change', () => { b.service = sv.value; const r = svcOf()[2]; if(r) b.commRate = r; LL.save(); LL.toast(r ? `Service level set · commission ${r}%` : 'Service level: negotiate'); }); }
 LL.views.bulk = () => { const b = B(); if(b.mode==='items') return itemsView(); const n = b.photos.filter(p=>!p.item).length;
   return {html:`${LL.modeToggle('bulk')}${bulkModeSeg('rooms')}
   <section class="bk-hero"><div><span class="badge acc">Bulk walkthrough</span><h2>Shoot rooms, not items.</h2><p>${isRep()?'AI lists everything it sees and estimates what it’s worth at auction. Rep mode adds the full value breakdown.':'AI lists everything it sees and estimates what it’s worth at auction. Miggy reviews it and gets back to you within 24 hours.'}</p></div></section>
   <div class="pad bk-form">
     <label class="field"><span>Job name</span><input type="text" id="bk-job" value="${esc(b.job)}" placeholder="e.g. Husson Bakery - MD" autocomplete="off" enterkeyhint="done"></label>
+    ${jobFields()}
     <div class="lbl">Area for new photos</div>${areaChips(b.area,'bkarea')}
     <div class="bk-cap">
       <button class="btn accent block bk-big" data-act="bkcam">${I.camera} Take photos</button>
@@ -91,7 +107,7 @@ LL.views.bulk = () => { const b = B(); if(b.mode==='items') return itemsView(); 
   ${b.photos.length?`<div class="pad"><button class="btn danger sm block" data-act="bknew">${I.trash} Start a new walkthrough</button></div>`:''}
   <div style="height:90px"></div>
   <div class="stickyfoot noprint"><button class="btn block bk-go" data-act="bkanalyze" ${n||b.items.length?'':'disabled'}>${I.sparkle} Analyze ${n||''} photo${n===1?'':'s'}${b.items.length?` + ${b.items.length} item${b.items.length===1?'':'s'}`:''}</button></div>`,
-  mount(el){ const j = el.querySelector('#bk-job'); j.addEventListener('input', () => { B().job = j.value.trim(); LL.save(); });
+  mount(el){ const j = el.querySelector('#bk-job'); j.addEventListener('input', () => { B().job = j.value.trim(); LL.save(); }); bindJob(el);
     el.querySelector('#bk-lib').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; await addFiles(fs); LL.render(true); }); } }; };
 LL.acts.bkarea = btn => { B().area = btn.dataset.v; LL.save(); LL.$$('[data-act=bkarea]').forEach(x => x.setAttribute('aria-pressed', x===btn)); };
 LL.acts.bknew = async () => { const b = B(); if(!confirm(`Clear ${b.photos.length} photos and the report from this phone? Send them to your assistant first if you still need them.`)) return;
@@ -196,6 +212,7 @@ function itemsView(){ const b = B(), items = b.items, bad = incomplete(), cur = 
   <section class="bk-hero"><div><span class="badge acc">Bulk · item by item</span><h2>4–7 photos per item.</h2><p>Front, side, back, inside, then the <b>data plate</b> and <b>brand logo</b>. 7 max. ${isRep()?'AI reads each item and estimates what it’s worth at auction. Rep mode adds the full value breakdown.':'AI reads each item and estimates what it’s worth at auction, then Miggy gets back to you within 24 hours.'}</p></div></section>
   <div class="pad bk-form">
     <label class="field"><span>Job name</span><input type="text" id="bk-job" value="${esc(b.job)}" placeholder="e.g. Husson Bakery - MD" autocomplete="off" enterkeyhint="done"></label>
+    ${jobFields()}
     <div class="lbl">Area for the next item</div>${areaChips(b.area,'bkarea')}
     <div class="bk-cap">
       <a class="btn accent block bk-big" href="${startHref}">${I.camera} ${startLbl}</a>
@@ -210,7 +227,7 @@ function itemsView(){ const b = B(), items = b.items, bad = incomplete(), cur = 
   ${b.photos.length||items.length?`<div class="pad"><button class="btn danger sm block" data-act="bknew">${I.trash} Start a new walkthrough</button></div>`:''}
   <div style="height:90px"></div>
   <div class="stickyfoot noprint"><button class="btn block bk-go" data-act="bkanalyze" ${items.length||roomN?'':'disabled'}>${I.sparkle} ${bad.length?`Item ${bad[0].n}: ${irule(bad[0].n).reqDone<IMIN?`${IMIN-irule(bad[0].n).reqDone} more required`:'needs plate / logo'}`:`Analyze ${items.length} item${items.length===1?'':'s'}`}</button></div>`,
-  mount(el){ const j = el.querySelector('#bk-job'); j.addEventListener('input', () => { B().job = j.value.trim(); LL.save(); });
+  mount(el){ const j = el.querySelector('#bk-job'); j.addEventListener('input', () => { B().job = j.value.trim(); LL.save(); }); bindJob(el);
     el.querySelector('#bk-ilib').addEventListener('change', async e => { const fs = [...e.target.files]; e.target.value = ''; await addItemFiles(fs); LL.render(true); }); } }; }
 /* several photos for one item from the library: fill empty slots in order, never past 7 */
 async function addItemFiles(files, n){ files = [...files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/i.test(f.name)); if(!files.length) return 0;
@@ -426,6 +443,7 @@ LL.views.bulkcontact = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#
      <label class="field"><span>Email</span><input name="email" type="email" inputmode="email" autocomplete="email" value="${esc(c.email||'')}"></label></div>
     <p class="hint" style="margin:-6px 0 12px">Phone or email, whichever you check first.</p>
     <label class="field"><span>Business name</span><input name="business" autocomplete="organization" value="${esc(c.business||b.job||'')}"></label>
+    <label class="field"><span>Street address <small class="muted">(optional)</small></span><input name="address" autocomplete="street-address" value="${esc(c.address||'')}" placeholder="Street address"></label>
     <label class="field"><span>Where is the equipment? (city, state)</span><input name="city" autocomplete="address-level2" value="${esc(c.city||'')}" placeholder="e.g., Baltimore, MD"></label>
     <div class="row"><label class="field"><span>Situation</span><select name="situation">${opt(SITUATIONS, c.situation, 'Pick one')}</select></label>
      <label class="field"><span>Needs to be gone</span><select name="timeline">${opt(TIMELINES, c.timeline, 'Pick one')}</select></label></div>
@@ -442,7 +460,7 @@ LL.views.bulkcontact = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#
     f.elements.landlord.addEventListener('change', () => { el.querySelector('.sl-ll').hidden = !/^(Yes|Not sure)$/.test(f.elements.landlord.value); });
     f.addEventListener('submit', async e => { e.preventDefault(); const v = k => (f.elements[k].value || '').trim();
       const show = m => { err.textContent = m; err.hidden = false; err.scrollIntoView({block:'center'}); };
-      const c = {name:v('name'), phone:v('phone'), email:v('email'), business:v('business'), city:v('city'), situation:v('situation'), timeline:v('timeline'), leaseEnd:v('leaseEnd'), landlord:v('landlord'), landlordContact:/^(Yes|Not sure)$/.test(v('landlord'))?v('landlordContact'):'', notes:v('notes')};
+      const c = {...(b.contact||{}), address:v('address'), name:v('name'), phone:v('phone'), email:v('email'), business:v('business'), city:v('city'), situation:v('situation'), timeline:v('timeline'), leaseEnd:v('leaseEnd'), landlord:v('landlord'), landlordContact:/^(Yes|Not sure)$/.test(v('landlord'))?v('landlordContact'):'', notes:v('notes')};
       b.contact = c; LL.save();
       if(!c.name) return show('Please enter your name.');
       if(!c.phone && !c.email) return show('Please add a phone number or email so Miggy can reach you.');
@@ -463,7 +481,7 @@ async function sendLead(b, contact, hp){ const rep = b.report, t = totals(rep.it
   const photos = []; for(const p of pick.slice(0, 30)){ const d = await smallPhoto(p, 720).catch(() => null); if(d) photos.push({name:`${p.item?'item'+p.item+'-'+p.slot:slug(p.area)}-${label(p)}.jpg`, dataUrl:d}); }
   let repPdf = ''; try{ const pdf = await reportPDF({rep:true, comm:false, q:.7}); if(pdf.size < 5.5e6) repPdf = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(''); fr.readAsDataURL(pdf); }); }catch(e){ console.info('[lead] pdf', e); }
   const deal = dealScore(rep.items, contact);
-  const body = { company_site: hp||'', job: b.job, mode: b.mode, aiSource: rep.source, photoCount: b.photos.length, contact, deal: {score: deal.score, reason: deal.reason}, repPdf,
+  const body = { company_site: hp||'', job: b.job, mode: b.mode, aiSource: rep.source, photoCount: b.photos.length, contact, service: isRep() ? svcOf()[1] : '', deal: {score: deal.score, reason: deal.reason}, repPdf,
     totals: {newTotal: st.nw, aucLow: t.auc[0], aucHigh: t.auc[1], fbLow: t.fb[0], fbHigh: t.fb[1]},
     items: rep.items.map(i => ({itemNo:i.itemNo||null, name:i.name, brand:i.brand, model:i.model, qty:i.qty, condition:i.condition, area:i.area, newRetail:i.newRetail||0, aucLow:i.auc[0], aucHigh:i.auc[1], fbLow:i.fb[0], fbHigh:i.fb[1], reserve:reserveOf(i), photos:i.photos, flags:i.flags})),
     photos };
@@ -574,7 +592,7 @@ function sheetData(isRepX){ const rep = B().report, items = rep.items;
   const blank = n => Array(n).fill('');
   return {head: RHEAD, rows, total: ['','TOTAL','','','','','', $n(st.nw), Math.round(st.used[0])||'', Math.round(st.used[1])||'', $n(t.fb[0]), $n(t.fb[1]), $n(t.auc[0]), $n(t.auc[1]), $n(items.reduce((a,i)=>a+reserveOf(i),0)), '', ''],
     extra: [['', `Our commission (${cm.rate}% of auction)`, ...blank(10), Math.round(cm.comm[0]), Math.round(cm.comm[1])], ['', 'Net to seller (auction minus commission)', ...blank(10), Math.round(cm.net[0]), Math.round(cm.net[1])]],
-    notes: [`Deal score ${d.score}/10: ${d.reason}`, `Seller: ${[c.name, c.business, c.phone, c.email, c.city].filter(Boolean).join(' · ') || '—'}`,
+    notes: [`Deal score ${d.score}/10: ${d.reason}`, `Service level: ${svcOf()[1]}`, `Seller: ${[c.name, c.business, c.phone, c.email, c.address, c.city].filter(Boolean).join(' · ') || '—'}`,
       `Lease end: ${c.leaseEnd || '—'} · Landlord involved: ${c.landlord || '—'}${c.landlordContact ? ' (' + c.landlordContact + ')' : ''} · Situation: ${c.situation || '—'} · Timeline: ${c.timeline || '—'}`,
       c.notes ? `Seller notes: ${c.notes}` : '', 'REP ONLY: contains commission. Do not send to the seller. Photo-based AI estimates, not an appraisal.'].filter(Boolean)}; }
 function toCSV(isRepX){ const d = sheetData(isRepX), q = v => '"' + String(v ?? '').replace(/"/g,'""') + '"';
@@ -603,7 +621,8 @@ function summaryText(isRepX, maxItems){ const rep = B().report, st = sellerTotal
     L.push('', 'Photo-based estimates, not an appraisal. Miggy will be in touch within 24 hours.', `Questions? Text Miggy ${MIGGY.phone}`); return L.join('\n'); }
   const t = totals(rep.items), cm = commOf(rep.items), c = B().contact || {}, d = dealScore(rep.items, c);
   L.push(`REP REPORT (internal, includes commission): ${rep.job || B().job || c.business || 'Walkthrough'}`, `Deal score ${d.score}/10: ${d.reason}`);
-  if(c.name) L.push(`Seller: ${[c.name, c.business, c.phone, c.email, c.city].filter(Boolean).join(' · ')}`);
+  L.push(`Service level: ${svcOf()[1]}`);
+  if(c.name || c.business) L.push(`Seller: ${[c.name, c.business, c.phone, c.email, c.address, c.city].filter(Boolean).join(' · ')}`);
   if(c.leaseEnd || c.landlord) L.push(`Lease end: ${c.leaseEnd||'—'} · Landlord: ${c.landlord||'—'}${c.landlordContact?' ('+c.landlordContact+')':''}`);
   L.push(`Totals: New ~${money(st.nw)} · Used ${rng(st.used[0],st.used[1])} · FB ${rng(t.fb[0],t.fb[1])} · Auction ${rng(t.auc[0],t.auc[1])}`,
     `Commission ${cm.rate}%: ${rng(cm.comm[0],cm.comm[1])} · Net to seller ${rng(cm.net[0],cm.net[1])}`, '');
@@ -635,7 +654,7 @@ async function reportPDF(opts){ opts = opts || {}; const R = !!opts.rep, rep = B
     need(130); x.fillStyle = d.score >= 8 ? '#dcfce7' : d.score >= 5 ? '#fef9c3' : '#fee2e2'; x.fillRect(M, y, W-2*M, 116); font(56, 800); x.fillStyle = '#111827'; x.fillText(`Deal score ${d.score}/10`, M+20, y+64);
     font(20, 400); x.fillStyle = '#374151'; wrap(d.reason, W-2*M-40).slice(0,2).forEach((l, j) => x.fillText(l, M+20, y+94+j*24)); y += 140;
     text('Seller', 28, 800, '#091747', 2);
-    [[`Name: ${c.name||'—'}${c.business?' · '+c.business:''}`], [`Phone: ${c.phone||'—'} · Email: ${c.email||'—'}`], [`Location: ${c.city||'—'} · Situation: ${c.situation||'—'} · Timeline: ${c.timeline||'—'}`],
+    [[`Name: ${c.name||'—'}${c.business?' · '+c.business:''}`], [`Phone: ${c.phone||'—'} · Email: ${c.email||'—'}`], c.address ? [`Address: ${c.address}`] : null, opts.comm ? [`Service level: ${svcOf()[1]}`] : null, [`Location: ${c.city||'—'} · Situation: ${c.situation||'—'} · Timeline: ${c.timeline||'—'}`],
      [`Lease ending / move-out: ${c.leaseEnd ? new Date(c.leaseEnd+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + (d.days!==null?` (${d.days<0?-d.days+' days ago':'in '+d.days+' days'})`:'') : '—'} · Landlord involved: ${c.landlord||'—'}${c.landlordContact?' ('+c.landlordContact+')':''}`],
      c.notes ? [`Notes: ${c.notes}`] : null].filter(Boolean).forEach(l => text(l[0], 22, 400, '#111827', 2)); y += 14;
     boxes([['Est. NEW', st.nw>0?'~'+money(st.nw):'—'], ['Est. USED', rng(st.used[0],st.used[1])], ['FB Marketplace', rng(t.fb[0],t.fb[1])], ['Auction', rng(t.auc[0],t.auc[1])]], 120);
@@ -723,7 +742,7 @@ async function openLead(el, arg){ const m = /^([a-f0-9]{16})\.([a-f0-9]{32})$/.e
   for(const p of j.photos||[]){ const n = +((/^P(\d+)$/.exec(p.label)||[])[1]) || (b.seq + 1); const id = 'r' + Date.now().toString(36) + LL.uid().slice(0,4);
     await store.put(id, {full: p.dataUrl, thumb: p.dataUrl}); b.photos.push({id, n, area: 'Kitchen', ts: Date.now(), remote: true}); b.seq = Math.max(b.seq, n); }
   const items = (j.items||[]).map(x => { const o = norm(Object.assign({confidence:'medium'}, x)); if(x.itemNo) o.itemNo = x.itemNo; if(x.newRetail === 0) o.newRetail = null; return o; });
-  b.job = j.job || (j.contact||{}).business || ''; b.contact = j.contact || {}; b.mode = j.mode || 'items';
+  b.job = j.job || (j.contact||{}).business || ''; b.contact = j.contact || {}; b.mode = j.mode || 'items'; b.service = (SERVICE.find(x => x[1]===j.service) || SERVICE[0])[0]; b.commRate = svcOf()[2] || 35;
   b.report = { source: j.aiSource || 'ai', at: Date.parse(j.createdAt) || Date.now(), job: b.job, photos: j.photoCount || b.photos.length, mode: b.mode, items, notes: '',
     lead: { id: j.id, at: Date.parse(j.createdAt) || Date.now(), notified: 'sent' }, remote: { id: m[1] } };
   LL.save(); LL.toast('Seller report loaded: set reserves + commission, then export'); LL.go('#/sell/bulk/report', true); }
@@ -760,15 +779,16 @@ LL.views.bulkreport = () => { const b = B(), rep = b.report; if(!rep){ LL.go('#/
   const banner = demo ? `<div class="bk-demo" role="note"><b>Example only</b> ${rep.why==='offline'?'You were offline, so this is an example bakery report, not read from your photos. Re-run Analyze with signal.':'Speedy AI couldn’t be reached, so this is an example bakery report, not read from your photos. Tap Analyze again.'} Or tap <b>Send to my assistant</b>.</div>`
     : `<div class="bk-ai" role="note"><b>AI estimate</b> from your ${rep.photos} photos. Photo-based, not an appraisal. Check the flagged items on site.</div>`;
   const cm = commOf(rep.items), st = sellerTotals(rep.items), c = b.contact || {}, deal = dealScore(rep.items, c);
-  const comm = `<div class="card pad bk-comm"><div class="bk-commh"><div class="lbl">Commission (rep only)</div><label class="bk-rate"><span class="sr-only">Commission rate</span><select id="bk-rate" aria-label="Commission rate">${RATE_OPTS.map(r => `<option value="${r}" ${r===cm.rate?'selected':''}>${r}%</option>`).join('')}</select></label></div>
+  const comm = `<div class="card pad bk-comm"><div class="bk-commh"><div class="lbl">Commission (rep only) · ${esc(svcOf()[1])}</div><label class="bk-rate"><span class="sr-only">Commission rate</span><select id="bk-rate" aria-label="Commission rate">${RATE_OPTS.map(r => `<option value="${r}" ${r===cm.rate?'selected':''}>${r}%</option>`).join('')}</select></label></div>
     <div class="bk-trow"><span>Auction total (hammer)</span><b>${rng(cm.gross[0], cm.gross[1])}</b></div>
     <div class="bk-trow"><span>Our commission (${cm.rate}%)</span><b>${rng(cm.comm[0], cm.comm[1])}</b></div>
     <div class="bk-trow net"><span>Net to seller</span><b>${rng(cm.net[0], cm.net[1])}</b></div></div>`;
   const dd = deal.days, dealCard = `<div class="pad"><div class="card pad bk-deal s${deal.score>=8?'hi':deal.score>=5?'mid':'lo'}"><div class="bk-dealn"><b>${deal.score}</b><small>/10</small></div><div><div class="lbl">Deal score</div><p>${esc(deal.reason)}</p></div></div></div>`;
-  const sellerCard = c.name ? `<div class="pad"><div class="card pad bk-seller"><div class="lbl">Seller${rep.lead?` · lead sent ${new Date(rep.lead.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`:''}</div>
-    <p><b>${esc(c.name)}</b>${c.business?` · ${esc(c.business)}`:''}</p>
+  const sellerCard = (c.name || c.business || c.address || c.email) ? `<div class="pad"><div class="card pad bk-seller"><div class="lbl">Seller${rep.lead?` · lead sent ${new Date(rep.lead.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}`:''}</div>
+    <p><b>${esc(c.name||c.business||'—')}</b>${c.name&&c.business?` · ${esc(c.business)}`:''}</p>
     <p>${c.phone?`<a href="tel:${esc(c.phone.replace(/[^\d+]/g,''))}">${esc(c.phone)}</a>`:''}${c.phone&&c.email?' · ':''}${c.email?`<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`:''}</p>
-    <p class="small">${esc(c.city||'—')} · ${esc(c.situation||'—')} · needs to be gone: ${esc(c.timeline||'—')}</p>
+    ${c.address?`<p class="small">${esc(c.address)}</p>`:''}<p class="small">${esc(c.city||'—')} · ${esc(c.situation||'—')} · needs to be gone: ${esc(c.timeline||'—')}</p>
+    <p class="small">Service level: <b>${esc(svcOf()[1])}</b></p>
     <p class="small">Lease end: <b>${c.leaseEnd?esc(c.leaseEnd)+(dd!==null?` (${dd<0?-dd+' days ago':'in '+dd+' days'})`:''):'—'}</b> · Landlord involved: <b>${esc(c.landlord||'—')}</b>${c.landlordContact?` (${esc(c.landlordContact)})`:''}</p>
     ${c.notes?`<p class="small muted">“${esc(c.notes)}”</p>`:''}</div></div>` : '';
   return {html:`<div class="bk-rep">

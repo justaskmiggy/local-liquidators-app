@@ -828,3 +828,6 @@ code{font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:
 .bk-rate select{font:inherit;font-weight:800;font-size:16px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text)}
 .bk-trow.net b{color:#16a34a}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.bk-jobf{margin-top:2px}
+.bk-svcnote{background:var(--surface-2);border-radius:12px;padding:8px 12px;margin:-4px 0 12px;color:var(--text-2)}
+.bk-svcnote p{margin:4px 0;line-height:1.35}
